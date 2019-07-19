@@ -171,9 +171,22 @@ object PipelinesParameterConversions {
   import cromwell.backend.google.pipelines.v2alpha1.PipelinesConversions._
   import cromwell.backend.google.pipelines.v2alpha1.ToParameter.ops._
 
+  val gcsPathMatcher = "gs://([^/]+)/".r
+
+  def groupInputsByBucket(gcsInputs: List[PipelinesApiInput]): Map[String, List[PipelinesApiInput]] = {
+    gcsInputs.foldRight(Map[String, List[PipelinesApiInput]]().withDefault(_ => List.empty)) { case (i, acc) =>
+      i.cloudPath.toString match {
+        case gcsPathMatcher(bucket) =>
+          acc + (bucket -> (i :: acc(bucket)))
+      }
+    }
+  }
+
   def groupedGcsFileInputActions(inputs: List[PipelinesApiFileInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
     // Build Actions for groups of files.
     import mouse.all._
+
+    // Grouping by buckets is hugely important for requester pays and may also help with writing more efficient gsutils cp commands.
     val commands = for {
       grouping <- inputs.grouped(10)
       command = grouping flatMap { i =>
