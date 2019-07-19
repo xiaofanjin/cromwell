@@ -12,7 +12,6 @@ class PipelinesParameterConversionsSpec extends FlatSpec with Matchers {
   it should "group files by bucket" in {
 
     def makeInput(bucket: String, name: String): PipelinesApiFileInput = {
-      val path = DefaultPathBuilder.build(Paths.get("foo1"))
       PipelinesApiFileInput(
         name = name,
         cloudPath = DefaultPathBuilder.build(Paths.get(s"gs://$bucket/$name")),
@@ -21,11 +20,20 @@ class PipelinesParameterConversionsSpec extends FlatSpec with Matchers {
       )
     }
 
-    val inputs = List(
-      List("")
+    val inputs: List[PipelinesApiFileInput] = List(
+      ("foo", "file1"),
+      ("foo", "file2"),
+      ("bar", "file1"),
+      ("bar", "file2"),
+      ("bar", "file3"),
+      ("baz", "file1")
+    ) map (makeInput _).tupled.apply
 
-    )
+    val expected =
+      Map("foo" -> (List(0, 1) map inputs.apply)) ++
+      Map("bar" -> (List(2, 3, 4) map inputs.apply)) ++
+      Map("baz" -> List(inputs(5)))
 
+    PipelinesParameterConversions.groupInputsByBucket(inputs) shouldEqual expected
   }
-
 }

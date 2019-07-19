@@ -171,7 +171,7 @@ object PipelinesParameterConversions {
   import cromwell.backend.google.pipelines.v2alpha1.PipelinesConversions._
   import cromwell.backend.google.pipelines.v2alpha1.ToParameter.ops._
 
-  val gcsPathMatcher = "gs://([^/]+)/".r
+  val gcsPathMatcher = "^gs:/([^/]+)/.*".r
 
   def groupInputsByBucket(gcsInputs: List[PipelinesApiInput]): Map[String, List[PipelinesApiInput]] = {
     gcsInputs.foldRight(Map[String, List[PipelinesApiInput]]().withDefault(_ => List.empty)) { case (i, acc) =>
@@ -186,10 +186,12 @@ object PipelinesParameterConversions {
     // Build Actions for groups of files.
     import mouse.all._
 
-    // Grouping by buckets is hugely important for requester pays and may also help with writing more efficient gsutils cp commands.
     val commands = for {
-      grouping <- inputs.grouped(10)
-      command = grouping flatMap { i =>
+      // Grouping by buckets is hugely important for requester pays and may also help with writing more efficient
+      // gsutil cp commands.
+      bucketGroup <- groupInputsByBucket(inputs).values.toList
+      subBucketGroup <- bucketGroup.grouped(10)
+      command = subBucketGroup flatMap { i =>
         List(
            ActionBuilder.localizingInputMessage(i) |> ActionBuilder.timestampedMessage(withSleep = false),
            localizeFile(i.cloudPath, i.containerPath, exitOnSuccess = false)
@@ -201,7 +203,7 @@ object PipelinesParameterConversions {
       Key.Tag -> Value.Localization,
       Key.InputName -> "Input files"
     )
-    commands.toList map { command => cloudSdkShellAction("sleep 5\n" + command)(mounts = mounts, labels = labels) }
+    commands map { command => cloudSdkShellAction("sleep 5\n" + command)(mounts = mounts, labels = labels) }
   }
 
   def groupedGcsDirectoryInputActions(inputs: List[PipelinesApiDirectoryInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
