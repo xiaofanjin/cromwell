@@ -1,7 +1,5 @@
 package cromwell.backend.google.pipelines.v2alpha1
 
-import java.nio.charset.Charset
-
 import cats.data.NonEmptyList
 import cloud.nio.impl.drs.DrsCloudNioFileSystemProvider
 import com.google.api.services.genomics.v2alpha1.model.{Action, Mount}
@@ -16,9 +14,10 @@ import cromwell.filesystems.drs.DrsPath
 import cromwell.filesystems.gcs.GcsPath
 import cromwell.filesystems.http.HttpPath
 import cromwell.filesystems.sra.SraPath
-import org.apache.commons.io.IOUtils
+import org.apache.commons.codec.digest.DigestUtils
 import simulacrum.typeclass
 
+import scala.io.Source
 import scala.language.implicitConversions
 @typeclass trait ToParameter[A <: PipelinesParameter] {
   def toActions(p: A, mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): NonEmptyList[Action]
@@ -35,6 +34,7 @@ trait PipelinesParameterConversions {
       val localizationAction = fileInput.cloudPath match {
         case drsPath: DrsPath =>
           import cromwell.backend.google.pipelines.v2alpha1.api.ActionCommands.ShellPath
+
           import collection.JavaConverters._
 
           val drsFileSystemProvider = drsPath.drsPath.getFileSystem.provider.asInstanceOf[DrsCloudNioFileSystemProvider]
@@ -185,7 +185,8 @@ object PipelinesParameterConversions {
     }
   }
 
-  private lazy val transferScriptTemplate = IOUtils.resourceToString("transfer.sh", Charset.defaultCharset())
+  private lazy val transferScriptTemplate =
+    Source.fromInputStream(Thread.currentThread.getContextClassLoader.getResourceAsStream("transfer.sh")).mkString
 
   def groupedGcsFileInputActions(inputs: List[PipelinesApiFileInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
     // Cromwell makes a bucket (transfer) list.
@@ -193,21 +194,23 @@ object PipelinesParameterConversions {
     def transferBundle(bucket: String, inputs: List[PipelinesApiInput]): String = {
       val bucketTemplate =
         s"""
-         localize_files_%s=(
-           "localize" # direction
-           "file"     # file or directory
-           "%s"       # project
-           "%s"       # max attempts
-           %s
-         )
-
-         transfer "$${localize_files_%s[@]}"
+         |%s=( # %s
+         |  "localize" # direction
+         |  "file"     # file or directory
+         |  "%s"       # project
+         |  "%s"       # max attempts
+         |  %s
+         |)
+         |
+         |transfer "$${%s[@]}"
        """
       val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
       val attempts = localizationConfiguration.localizationAttempts
-      val cloudAndContainerPaths = inputs map { i => s""""${i.cloudPath}\n${i.containerPath}""" } mkString("", "\n", "")
+      val cloudAndContainerPaths = inputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
 
-      bucketTemplate.format(bucket, project, attempts, cloudAndContainerPaths, bucket)
+      // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
+      val arrayIdentifier = "localize_files_" + DigestUtils.md5Hex(bucket).take(7)
+      bucketTemplate.format(arrayIdentifier, bucket, project, attempts, cloudAndContainerPaths, arrayIdentifier).stripMargin
     }
 
     val transferBundles = groupInputsByBucket(inputs).toList map (transferBundle _).tupled mkString "\n"
