@@ -34,7 +34,7 @@ delocalize_file() {
   local content="$4"
 
   local content_flag=$(gsutil_content_flag $content)
-  echo -n "rm -f $HOME/.config/gcloud/gce && gsutil ${rpflag} ${content_flag} cp '$container' '$cloud'"
+  echo -n "rm -f $HOME/.config/gcloud/gce && gsutil ${rpflag} -m ${content_flag} cp '$container' '$cloud'"
 }
 
 delocalize_directory() {
@@ -44,13 +44,7 @@ delocalize_directory() {
   local content="$4"
 
   local content_flag=$(gsutil_content_flag $content)
-  echo -n "rm -f $HOME/.config/gcloud/gce && gsutil ${rpflag} ${content_flag} -m rsync -r '$container' '$cloud'"
-}
-
-delocalize_no_requester_pays_directory() {
-  local cloud="$1"
-  local container="$2"
-  echo -n "insert the right code here"
+  echo -n "rm -f $HOME/.config/gcloud/gce && gsutil ${rpflag} -m ${content_flag} rsync -r '$container' '$cloud'"
 }
 
 timestamped_message() {
@@ -71,10 +65,12 @@ delocalize_message() {
   $(timestamped_message "${message}")
 }
 
+# Transfer a bundle of files xor directories to or from the same GCS bucket.
 transfer() {
   local direction="$1"
   local file_or_directory="$2"
   local project="$3"
+  local max_attempts="$4"
 
   if [[ "$direction" != "localize" && "$direction" != "delocalize" ]]; then
     echo "direction must be 'localize' or 'delocalize' but got '$direction'"
@@ -86,31 +82,31 @@ transfer() {
     exit 1
   fi
 
-  shift; shift; shift
+  shift; shift; shift; shift # direction; file_or_directory; project; max_attempts
 
-  local max_retries=3
+  # Whether the requester pays status of the GCS bucket is certain. rp status is presumed false until proven otherwise.
+  local rp_status_certain=false
   local use_requester_pays=false
-  local first_file=true
 
   local message_fn="${direction}_message"
 
-  # One sleep 5 to rule them all
+  # One race-condition sidestepping sleep 5 to rule them all.
   sleep 5
 
-  # While there are still files or directories to localize or delocalize
+  # Loop while there are still files or directories to localize or delocalize.
   while [[ $# -gt 0 ]]; do
-    i=0
     cloud="$1"
     container="$2"
 
     content_type=""
     if [[ "${direction}" = "delocalize" ]]; then
-      # content type only appears in delocalize bundles
+      # Content type only appears in delocalization bundles.
       content_type="$3"
-      shift
+      shift # content_type
     fi
-    shift; shift
+    shift; shift # cloud; container
 
+    # Log what is being localized or delocalized (at least one test depends on this).
     $(${message_fn} "$cloud" "$container")
 
     if [[ ${use_requester_pays} = true ]]; then
@@ -124,32 +120,39 @@ transfer() {
     # they won't use.
     command=$(${transfer_fn} "$cloud" "$container" "$rpflag" "$content_type")
 
-    # Loop retrying transfers for this file or directory while retries are not exhausted.
-    while [[ ${i} -lt ${max_retries} ]]; do
+    attempt=0
+    # Loop attempting transfers for this file or directory while attempts are not exhausted.
+    while [[ ${attempt} -le ${max_attempts} ]]; do
       # Run the transfer command.
       $(${command})
 
       if [[ $? = 0 ]]; then
-        first_file=false
+        rp_status_certain=true
         break
       else
-        # If this is the first file or directory in the bundle then look for rp errors, otherwise don't bother.
-        if [[ ${first_file} = true ]]; then
+        $(timestamped_message "${command} failed")
+        # Print the reason of the failure.
+        cat "${gsutil_log}"
+
+        # If the requester pays status of the GCS bucket is not certain look for requester pays errors.
+        if [[ ${rp_status_certain} = false ]]; then
           if grep -q "Bucket is requester pays bucket but no user project provided." "${gsutil_log}"; then
-            $(timestamped_message "${command} failed")
-            # Print the reason of the failure
-            cat "${gsutil_log}"
             $(timestamped_message "Retrying with user project")
             use_requester_pays=true
             # Do not increment the attempt number, a requester pays failure does not count against retries.
+            # Do mark that the bucket in question is certain to have requester pays status.
+            rp_status_certain=true
+          else
+            # Requester pays status is not certain but this transfer failed for non-requester pays reasons.
+            # Increment the attempt number.
+            attempt=$((attempt+1))
           fi
         else
-          i=$((i+1))
+          attempt=$((attempt+1))
         fi
-        first_file=false
       fi
     done
-    if [[ ${i} = ${max_retries} ]]; then # out of retries
+    if [[ ${attempt} -gt ${max_attempts} ]]; then # out of attempts
       exit $?
     fi
   done
@@ -157,12 +160,14 @@ transfer() {
 }
 
 
-# Scala code should write these bundles
+# Scala code will write these bundles. One bundle per source/target GCS bucket since requester pays status
+# is specific to individual GCS buckets.
 
 localize_files_bundle=(
   "localize"   # direction
   "file"       # file or directory
   "project1"   # project
+  "3"          # max transfer attempts
   "cloud1"     # cloud path 1
   "container1" # container path 1
   "cloud2"     # cloud path 2
@@ -174,6 +179,7 @@ localize_directories_bundle=(
   "localize"
   "directory"
   "project2"
+  "3"
   "cloud1"
   "container1"
   "cloud2"
@@ -185,11 +191,11 @@ delocalize_directories_bundle=(
   "delocalize"
   "directory"
   "project3"
+  "3"
   "cloud1"
   "container1"
   "content_type1"
   "cloud2"
   "container2"
   "content_type2"
-
 )
