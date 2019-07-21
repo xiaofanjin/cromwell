@@ -163,39 +163,39 @@ transfer() {
 # Scala code will write these bundles. One bundle per source/target GCS bucket since requester pays status
 # is specific to individual GCS buckets.
 
-localize_files_bundle=(
-  "localize"   # direction
-  "file"       # file or directory
-  "project1"   # project
-  "3"          # max transfer attempts
-  "cloud1"     # cloud path 1
-  "container1" # container path 1
-  "cloud2"     # cloud path 2
-  "container2" # container path 2
-)
-transfer "${localize_files_bundle[@]}"
-
-localize_directories_bundle=(
-  "localize"
-  "directory"
-  "project2"
-  "3"
-  "cloud1"
-  "container1"
-  "cloud2"
-  "container2"
-)
-transfer "${localize_directories_bundle[@]}"
-
-delocalize_directories_bundle=(
-  "delocalize"
-  "directory"
-  "project3"
-  "3"
-  "cloud1"
-  "container1"
-  "content_type1"
-  "cloud2"
-  "container2"
-  "content_type2"
-)
+# localize_files_bundle=(
+#   "localize"   # direction
+#   "file"       # file or directory
+#   "project1"   # project
+#   "3"          # max transfer attempts
+#   "cloud1"     # cloud path 1
+#   "container1" # container path 1
+#   "cloud2"     # cloud path 2
+#   "container2" # container path 2
+# )
+# transfer "${localize_files_bundle[@]}"
+#
+# localize_directories_bundle=(
+#   "localize"
+#   "directory"
+#   "project2"
+#   "3"
+#   "cloud1"
+#   "container1"
+#   "cloud2"
+#   "container2"
+# )
+# transfer "${localize_directories_bundle[@]}"
+#
+# delocalize_directories_bundle=(
+#   "delocalize"
+#   "directory"
+#   "project3"
+#   "3"
+#   "cloud1"
+#   "container1"
+#   "content_type1"
+#   "cloud2"
+#   "container2"
+#   "content_type2"
+# )

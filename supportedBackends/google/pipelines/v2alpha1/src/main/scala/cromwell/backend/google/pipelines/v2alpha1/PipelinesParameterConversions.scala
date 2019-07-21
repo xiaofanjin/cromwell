@@ -1,5 +1,7 @@
 package cromwell.backend.google.pipelines.v2alpha1
 
+import java.nio.charset.Charset
+
 import cats.data.NonEmptyList
 import cloud.nio.impl.drs.DrsCloudNioFileSystemProvider
 import com.google.api.services.genomics.v2alpha1.model.{Action, Mount}
@@ -14,6 +16,7 @@ import cromwell.filesystems.drs.DrsPath
 import cromwell.filesystems.gcs.GcsPath
 import cromwell.filesystems.http.HttpPath
 import cromwell.filesystems.sra.SraPath
+import org.apache.commons.io.IOUtils
 import simulacrum.typeclass
 
 import scala.language.implicitConversions
@@ -171,7 +174,7 @@ object PipelinesParameterConversions {
   import cromwell.backend.google.pipelines.v2alpha1.PipelinesConversions._
   import cromwell.backend.google.pipelines.v2alpha1.ToParameter.ops._
 
-  val gcsPathMatcher = "^gs:/([^/]+)/.*".r
+  val gcsPathMatcher = "^gs://?([^/]+)/.*".r
 
   def groupInputsByBucket(gcsInputs: List[PipelinesApiInput]): Map[String, List[PipelinesApiInput]] = {
     gcsInputs.foldRight(Map[String, List[PipelinesApiInput]]().withDefault(_ => List.empty)) { case (i, acc) =>
@@ -182,28 +185,39 @@ object PipelinesParameterConversions {
     }
   }
 
-  def groupedGcsFileInputActions(inputs: List[PipelinesApiFileInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
-    // Build Actions for groups of files.
-    import mouse.all._
+  private lazy val transferScriptTemplate = IOUtils.resourceToString("transfer.sh", Charset.defaultCharset())
 
-    val commands = for {
-      // Grouping by buckets is hugely important for requester pays and may also help with writing more efficient
-      // gsutil cp commands.
-      bucketGroup <- groupInputsByBucket(inputs).values.toList
-      subBucketGroup <- bucketGroup.grouped(10)
-      command = subBucketGroup flatMap { i =>
-        List(
-           ActionBuilder.localizingInputMessage(i) |> ActionBuilder.timestampedMessage(withSleep = false),
-           localizeFile(i.cloudPath, i.containerPath, exitOnSuccess = false)
-        )
-      } mkString "\n"
-    } yield command
+  def groupedGcsFileInputActions(inputs: List[PipelinesApiFileInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
+    // Cromwell makes a bucket (transfer) list.
+
+    def transferBundle(bucket: String, inputs: List[PipelinesApiInput]): String = {
+      val bucketTemplate =
+        s"""
+         localize_files_%s=(
+           "localize" # direction
+           "file"     # file or directory
+           "%s"       # project
+           "%s"       # max attempts
+           %s
+         )
+
+         transfer "$${localize_files_%s[@]}"
+       """
+      val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
+      val attempts = localizationConfiguration.localizationAttempts
+      val cloudAndContainerPaths = inputs map { i => s""""${i.cloudPath}\n${i.containerPath}""" } mkString("", "\n", "")
+
+      bucketTemplate.format(bucket, project, attempts, cloudAndContainerPaths, bucket)
+    }
+
+    val transferBundles = groupInputsByBucket(inputs).toList map (transferBundle _).tupled mkString "\n"
 
     val labels = Map(
       Key.Tag -> Value.Localization,
       Key.InputName -> "Input files"
     )
-    commands map { command => cloudSdkShellAction("sleep 5\n" + command)(mounts = mounts, labels = labels) }
+
+    List(cloudSdkShellAction(transferScriptTemplate + transferBundles)(mounts = mounts, labels = labels))
   }
 
   def groupedGcsDirectoryInputActions(inputs: List[PipelinesApiDirectoryInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
