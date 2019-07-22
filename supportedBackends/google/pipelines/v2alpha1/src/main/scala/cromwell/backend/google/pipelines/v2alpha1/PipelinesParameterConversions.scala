@@ -194,7 +194,8 @@ object PipelinesParameterConversions {
     def transferBundle(bucket: String, inputs: List[PipelinesApiInput]): String = {
       val bucketTemplate =
         s"""
-         |%s=( # %s
+         |# %s
+         |%s=(
          |  "localize" # direction
          |  "file"     # file or directory
          |  "%s"       # project
@@ -210,7 +211,7 @@ object PipelinesParameterConversions {
 
       // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
       val arrayIdentifier = "localize_files_" + DigestUtils.md5Hex(bucket).take(7)
-      bucketTemplate.format(arrayIdentifier, bucket, project, attempts, cloudAndContainerPaths, arrayIdentifier).stripMargin
+      bucketTemplate.format(bucket, arrayIdentifier , project, attempts, cloudAndContainerPaths, arrayIdentifier).stripMargin
     }
 
     val transferBundles = groupInputsByBucket(inputs).toList map (transferBundle _).tupled mkString "\n"
