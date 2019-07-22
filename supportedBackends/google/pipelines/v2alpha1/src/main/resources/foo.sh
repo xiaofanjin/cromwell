@@ -1,5 +1,6 @@
-set -x
+#!/bin/bash
 
+set -x
 gsutil_log="gsutil_output.txt"
 
 
@@ -7,8 +8,7 @@ localize_file() {
   local cloud="$1"
   local container="$2"
   local rpflag="$3"
-  # Do not quote rpflag, when that is set it will be -u project which should be two distinct arguments.
-  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m cp "$cloud" "$container" 2>&1 > "$gsutil_log"
+  echo -n "rm -f $HOME/.config/gcloud/gce && gsutil ${rpflag} -m cp '$cloud' '$container' 2>&1 > '$gsutil_log'"
 }
 
 localize_directory() {
@@ -16,8 +16,7 @@ localize_directory() {
   local container="$2"
   local rpflag="$3"
   local dir=$(dirname "${container}")
-  # Do not quote rpflag, when that is set it will be -u project which should be two distinct arguments.
-  mkdir -p "${dir}" && rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m rsync -r "${cloud}" "${container}"
+  echo -n "mkdir -p '${dir}' && rm -f $HOME/.config/gcloud/gce && gsutil ${rpflag} -m rsync -r '${cloud}' '${container}'"
 }
 
 # Content type is sometimes (not always) specified for delocalizations.
@@ -36,8 +35,7 @@ delocalize_file() {
   local content="$4"
 
   local content_flag=$(gsutil_content_flag $content)
-  # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments.
-  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} cp "$container" "$cloud"
+  echo -n "rm -f $HOME/.config/gcloud/gce && gsutil ${rpflag} -m ${content_flag} cp '$container' '$cloud'"
 }
 
 delocalize_directory() {
@@ -47,8 +45,7 @@ delocalize_directory() {
   local content="$4"
 
   local content_flag=$(gsutil_content_flag $content)
-  # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments.
-  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} rsync -r "$container" "$cloud"
+  echo -n "rm -f $HOME/.config/gcloud/gce && gsutil ${rpflag} -m ${content_flag} rsync -r '$container' '$cloud'"
 }
 
 timestamped_message() {
@@ -111,7 +108,7 @@ transfer() {
     shift; shift # cloud; container
 
     # Log what is being localized or delocalized (at least one test depends on this).
-    ${message_fn} "$cloud" "$container"
+    $(${message_fn} "$cloud" "$container")
 
     if [[ ${use_requester_pays} = true ]]; then
       rpflag="-u ${project}"
@@ -119,19 +116,22 @@ transfer() {
       rpflag=""
     fi
 
-    transfer_fn_name="${direction}_${file_or_directory}"
+    transfer_fn="${direction}_${file_or_directory}"
+    # Note that the file versions of transfer functions will be passed a content_type parameter that
+    # they won't use.
+    command=$(${transfer_fn} "$cloud" "$container" "$rpflag" "$content_type")
 
     attempt=1
     # Loop attempting transfers for this file or directory while attempts are not exhausted.
     while [[ ${attempt} -le ${max_attempts} ]]; do
-      # Note that the file versions of transfer functions will be passed an unused content_type parameter.
-      ${transfer_fn_name} "$cloud" "$container" "$rpflag" "$content_type"
+      # Run the transfer command.
+      $(${command})
 
       if [[ $? = 0 ]]; then
         rp_status_certain=true
         break
       else
-        timestamped_message ${transfer_fn_name}' "$cloud" "$container" "$rpflag" "$content_type" failed'
+        timestamped_message "${command} failed"
         # Print the reason of the failure.
         cat "${gsutil_log}"
 
@@ -158,3 +158,17 @@ transfer() {
     fi
   done
 }
+
+
+# cloud-cromwell-dev-self-cleaning
+localize_files_98b1573=(
+  "localize" # direction
+  "file"     # file or directory
+  "broad-dsde-cromwell-dev"       # project
+  "3"       # max attempts
+  "gs://cloud-cromwell-dev-self-cleaning/cromwell_execution/travis/lots_of_inputs/23be1f53-dc1f-4244-a117-ca6ae1991847/call-make_array/script"
+  "/cromwell_root/script"
+)
+
+transfer "${localize_files_98b1573[@]}"
+

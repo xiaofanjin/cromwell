@@ -158,6 +158,6 @@ object ActionCommands {
 
       s"""python -c 'import base64; print(base64.b64decode("$base64EncodedScript"));' > $scriptPath && """ +
       s"chmod u+x $scriptPath && " +
-      s"sh $scriptPath"
+      s"/bin/bash $scriptPath"
   }
 }
