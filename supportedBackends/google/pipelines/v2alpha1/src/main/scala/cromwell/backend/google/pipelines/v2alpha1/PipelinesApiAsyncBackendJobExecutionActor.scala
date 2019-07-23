@@ -70,7 +70,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
     val arrayIdentifier = "localize_files_" + DigestUtils.md5Hex(bucket).take(7)
     s"""
        |# $bucket
-       |%$arrayIdentifier=(
+       |$arrayIdentifier=(
        |  "localize" # direction
        |  "file"     # file or directory
        |  "$project"       # project
@@ -92,7 +92,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
     val arrayIdentifier = "localize_directories_" + DigestUtils.md5Hex(bucket).take(7)
     s"""
        |# $bucket
-       |%$arrayIdentifier=(
+       |$arrayIdentifier=(
        |  "localize"   # direction
        |  "directory"  # file or directory
        |  "$project"       # project
@@ -113,7 +113,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
     val arrayIdentifier = "delocalize_files_" + DigestUtils.md5Hex(bucket).take(7)
     s"""
        |# $bucket
-       |%$arrayIdentifier=(
+       |$arrayIdentifier=(
        |  "delocalize" # direction
        |  "file"       # file or directory
        |  "$project"       # project
@@ -134,7 +134,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
     val arrayIdentifier = "delocalize_directories_" + DigestUtils.md5Hex(bucket).take(7)
     s"""
        |# $bucket
-       |%$arrayIdentifier=(
+       |$arrayIdentifier=(
        |  "delocalize" # direction
        |  "file"       # file or directory
        |  "$project"       # project
