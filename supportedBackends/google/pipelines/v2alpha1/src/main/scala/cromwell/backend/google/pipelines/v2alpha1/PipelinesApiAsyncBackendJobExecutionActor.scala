@@ -1,17 +1,25 @@
 package cromwell.backend.google.pipelines.v2alpha1
 
+import com.google.api.services.genomics.v2alpha1.model.Mount
+import com.google.cloud.storage.contrib.nio.CloudStorageOptions
 import cromwell.backend.BackendJobDescriptor
+import cromwell.backend.google.pipelines.common.PipelinesApiConfigurationAttributes.LocalizationConfiguration
 import cromwell.backend.google.pipelines.common._
+import cromwell.backend.google.pipelines.common.api.PipelinesApiRequestFactory.CreatePipelineParameters
 import cromwell.backend.google.pipelines.common.io.PipelinesApiWorkingDisk
 import cromwell.backend.standard.StandardAsyncExecutionActorParams
-import cromwell.core.path.DefaultPathBuilder
-import cromwell.filesystems.gcs.GcsPathBuilder
+import cromwell.core.path.{DefaultPathBuilder, Path}
 import cromwell.filesystems.gcs.GcsPathBuilder.ValidFullGcsPath
+import cromwell.filesystems.gcs.{GcsPath, GcsPathBuilder}
+import org.apache.commons.codec.digest.DigestUtils
 import wom.core.FullyQualifiedName
 import wom.expression.FileEvaluation
 import wom.values.{GlobFunctions, WomFile, WomGlobFile, WomMaybeListedDirectory, WomMaybePopulatedFile, WomSingleFile, WomUnlistedDirectory}
 
-class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExecutionActorParams) extends cromwell.backend .google.pipelines.common.PipelinesApiAsyncBackendJobExecutionActor(standardParams) {
+import scala.concurrent.Future
+import scala.io.Source
+
+class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExecutionActorParams) extends cromwell.backend.google.pipelines.common.PipelinesApiAsyncBackendJobExecutionActor(standardParams) {
 
   // The original implementation assumes the WomFiles are all WomMaybePopulatedFiles and wraps everything in a PipelinesApiFileInput
   // In v2 we can differentiate files from directories 
@@ -37,6 +45,148 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
       key -> womFile.collectAsSeq({
         case womFile: WomFile if !inputsToNotLocalize.contains(womFile) => womFile
       })
+  }
+
+  override protected lazy val localizationScriptInput: Option[PipelinesApiFileInput] = Option(
+    PipelinesApiFileInput(PipelinesApiJobPaths.LocalizationScriptParameterName, pipelinesApiCallPaths.localizationScript,
+      DefaultPathBuilder.get(pipelinesApiCallPaths.localizationScriptFilename), workingDisk)
+  )
+
+  override protected lazy val delocalizationScriptInput: Option[PipelinesApiFileInput] = Option(
+    PipelinesApiFileInput(PipelinesApiJobPaths.DelocalizationScriptParameterName, pipelinesApiCallPaths.delocalizationScript,
+      DefaultPathBuilder.get(pipelinesApiCallPaths.delocalizationScriptFilename), workingDisk)
+  )
+
+  private val gcsPathMatcher = "^gs://?([^/]+)/.*".r
+
+  private def groupParametersByBucket[T <: PipelinesParameter](parameters: List[T]): Map[String, List[T]] = {
+    parameters.foldRight(Map[String, List[T]]().withDefault(_ => List.empty)) { case (p, acc) =>
+      p.cloudPath.toString match {
+        case gcsPathMatcher(bucket) =>
+          acc + (bucket -> (p :: acc(bucket)))
+      }
+    }
+  }
+
+  private lazy val transferScriptTemplate =
+    Source.fromInputStream(Thread.currentThread.getContextClassLoader.getResourceAsStream("transfer.sh")).mkString
+
+  private def fileLocalizationTransferBundle(localizationConfiguration: LocalizationConfiguration)(bucket: String, inputs: List[PipelinesApiFileInput]): String = {
+    val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
+    val maxAttempts = localizationConfiguration.localizationAttempts
+    val cloudAndContainerPaths = inputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
+
+    // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
+    val arrayIdentifier = "localize_files_" + DigestUtils.md5Hex(bucket).take(7)
+    s"""
+       |# $bucket
+       |%$arrayIdentifier=(
+       |  "localize" # direction
+       |  "file"     # file or directory
+       |  "$project"       # project
+       |  "$maxAttempts"   # max attempts
+       |  $cloudAndContainerPaths
+       |)
+       |
+       |transfer "$${$arrayIdentifier[@]}"
+      """.stripMargin
+  }
+
+  private def directoryLocalizationTransferBundle(localizationConfiguration: LocalizationConfiguration)(bucket: String, inputs: List[PipelinesApiDirectoryInput]): String = {
+    val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
+    val maxAttempts = localizationConfiguration.localizationAttempts
+    val cloudAndContainerPaths = inputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
+
+    // The array identifier is named after the bucket for uniqueness. This uses a digest of the bucket name since bucket names
+    // can contain characters that are not legal in bash identifiers.
+    val arrayIdentifier = "localize_directories_" + DigestUtils.md5Hex(bucket).take(7)
+    s"""
+       |# $bucket
+       |%$arrayIdentifier=(
+       |  "localize"   # direction
+       |  "directory"  # file or directory
+       |  "$project"       # project
+       |  "$maxAttempts"   # max attempts
+       |  $cloudAndContainerPaths
+       |)
+       |
+       |transfer "$${$arrayIdentifier[@]}"
+      """.stripMargin
+  }
+
+  private def fileDelocalizationTransferBundle(localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: List[PipelinesApiFileOutput]): String = {
+    val project = outputs.head.cloudPath.asInstanceOf[GcsPath].projectId
+    val maxAttempts = localizationConfiguration.localizationAttempts
+    val cloudAndContainerPaths = outputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
+
+    // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
+    val arrayIdentifier = "delocalize_files_" + DigestUtils.md5Hex(bucket).take(7)
+    s"""
+       |# $bucket
+       |%$arrayIdentifier=(
+       |  "delocalize" # direction
+       |  "file"       # file or directory
+       |  "$project"       # project
+       |  "$maxAttempts"   # max attempts
+       |  $cloudAndContainerPaths
+       |)
+       |
+       |transfer "$${$arrayIdentifier[@]}"
+      """.stripMargin
+  }
+
+  private def directoryDelocalizationTransferBundle(localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: List[PipelinesApiDirectoryOutput]): String = {
+    val project = outputs.head.cloudPath.asInstanceOf[GcsPath].projectId
+    val maxAttempts = localizationConfiguration.localizationAttempts
+    val cloudAndContainerPaths = outputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
+
+    // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
+    val arrayIdentifier = "delocalize_directories_" + DigestUtils.md5Hex(bucket).take(7)
+    s"""
+       |# $bucket
+       |%$arrayIdentifier=(
+       |  "delocalize" # direction
+       |  "file"       # file or directory
+       |  "$project"       # project
+       |  "$maxAttempts"   # max attempts
+       |  $cloudAndContainerPaths
+       |)
+       |
+       |transfer "$${$arrayIdentifier[@]}"
+      """.stripMargin
+  }
+
+  private def generateLocalizationScript(inputs: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
+    // KISS for now and keep files and directories separate, "fix" that later, maybe.
+    val fileInputs: List[PipelinesApiFileInput] = inputs collect { case i: PipelinesApiFileInput => i }
+    val directoryInputs: List[PipelinesApiDirectoryInput] = inputs collect { case i: PipelinesApiDirectoryInput => i }
+
+    val fileLocalizationBundles = groupParametersByBucket(fileInputs).toList map (fileLocalizationTransferBundle(localizationConfiguration) _).tupled mkString "\n"
+    val directoryLocalizationBundles = groupParametersByBucket(directoryInputs).toList map (directoryLocalizationTransferBundle(localizationConfiguration) _).tupled mkString "\n"
+    transferScriptTemplate + fileLocalizationBundles + directoryLocalizationBundles
+  }
+
+
+  private def generateDelocalizationScript(outputs: List[PipelinesApiOutput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
+    // KISS for now and keep files and directories separate, "fix" that later, maybe.
+    val fileOutputs: List[PipelinesApiFileOutput] = outputs collect { case i: PipelinesApiFileOutput => i }
+    val directoryOutputs: List[PipelinesApiDirectoryOutput] = outputs collect { case i: PipelinesApiDirectoryOutput => i }
+
+    val fileLocalizationBundles = groupParametersByBucket(fileOutputs).toList map (fileDelocalizationTransferBundle(localizationConfiguration) _).tupled mkString "\n"
+    val directoryLocalizationBundles = groupParametersByBucket(directoryOutputs).toList map (directoryDelocalizationTransferBundle(localizationConfiguration) _).tupled mkString "\n"
+    transferScriptTemplate + fileLocalizationBundles + directoryLocalizationBundles
+  }
+
+  override def uploadLocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
+    val mounts = PipelinesConversions.toMounts(createPipelineParameters)
+    val content = generateLocalizationScript(createPipelineParameters.inputOutputParameters.fileInputParameters, mounts)(localizationConfiguration)
+    asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
+  }
+
+  override def uploadDelocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
+    val mounts = PipelinesConversions.toMounts(createPipelineParameters)
+    val content = generateDelocalizationScript(createPipelineParameters.inputOutputParameters.fileOutputParameters, mounts)(localizationConfiguration)
+    asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
   }
 
   // Simply create a PipelinesApiDirectoryOutput in v2 instead of globbing

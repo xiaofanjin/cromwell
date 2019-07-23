@@ -174,9 +174,9 @@ object PipelinesParameterConversions {
   import cromwell.backend.google.pipelines.v2alpha1.PipelinesConversions._
   import cromwell.backend.google.pipelines.v2alpha1.ToParameter.ops._
 
-  val gcsPathMatcher = "^gs://?([^/]+)/.*".r
+  private val gcsPathMatcher = "^gs://?([^/]+)/.*".r
 
-  def groupInputsByBucket(gcsInputs: List[PipelinesApiInput]): Map[String, List[PipelinesApiInput]] = {
+  private def groupInputsByBucket(gcsInputs: List[PipelinesApiInput]): Map[String, List[PipelinesApiInput]] = {
     gcsInputs.foldRight(Map[String, List[PipelinesApiInput]]().withDefault(_ => List.empty)) { case (i, acc) =>
       i.cloudPath.toString match {
         case gcsPathMatcher(bucket) =>
@@ -192,26 +192,24 @@ object PipelinesParameterConversions {
     // Cromwell makes a bucket (transfer) list.
 
     def transferBundle(bucket: String, inputs: List[PipelinesApiInput]): String = {
-      val bucketTemplate =
-        s"""
-         |# %s
-         |%s=(
-         |  "localize" # direction
-         |  "file"     # file or directory
-         |  "%s"       # project
-         |  "%s"       # max attempts
-         |  %s
-         |)
-         |
-         |transfer "$${%s[@]}"
-       """
       val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
-      val attempts = localizationConfiguration.localizationAttempts
+      val maxAttempts = localizationConfiguration.localizationAttempts
       val cloudAndContainerPaths = inputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
 
       // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
       val arrayIdentifier = "localize_files_" + DigestUtils.md5Hex(bucket).take(7)
-      bucketTemplate.format(bucket, arrayIdentifier , project, attempts, cloudAndContainerPaths, arrayIdentifier).stripMargin
+      s"""
+      |# $bucket
+      |$arrayIdentifier=(
+      |  "localize" # direction
+      |  "file"     # file or directory
+      |  "$project"       # project
+      |  "$maxAttempts"   # max attempts
+      |  $cloudAndContainerPaths
+      |)
+      |
+      |transfer "$${$arrayIdentifier[@]}"
+      """.stripMargin
     }
 
     val transferBundles = groupInputsByBucket(inputs).toList map (transferBundle _).tupled mkString "\n"

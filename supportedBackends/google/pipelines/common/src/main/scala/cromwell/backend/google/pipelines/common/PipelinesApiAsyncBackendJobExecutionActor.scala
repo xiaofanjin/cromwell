@@ -14,6 +14,7 @@ import common.validation.ErrorOr._
 import common.validation.Validation._
 import cromwell.backend._
 import cromwell.backend.async.{AbortedExecutionHandle, ExecutionHandle, FailedNonRetryableExecutionHandle, FailedRetryableExecutionHandle, PendingExecutionHandle}
+import cromwell.backend.google.pipelines.common.PipelinesApiConfigurationAttributes.LocalizationConfiguration
 import cromwell.backend.google.pipelines.common.api.PipelinesApiRequestFactory._
 import cromwell.backend.google.pipelines.common.api.RunStatus.TerminalRunStatus
 import cromwell.backend.google.pipelines.common.api._
@@ -123,6 +124,10 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
 
   protected lazy val cmdInput =
     PipelinesApiFileInput(PipelinesApiJobPaths.JesExecParamName, pipelinesApiCallPaths.script, DefaultPathBuilder.get(pipelinesApiCallPaths.scriptFilename), workingDisk)
+
+  protected lazy val localizationScriptInput: Option[PipelinesApiFileInput] = None
+
+  protected lazy val delocalizationScriptInput: Option[PipelinesApiFileInput] = None
 
   protected lazy val dockerConfiguration = pipelinesConfiguration.dockerCredentials
 
@@ -432,6 +437,8 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
           cloudWorkflowRoot = workflowPaths.workflowRoot,
           cloudCallRoot = callRootPath,
           commandScriptContainerPath = cmdInput.containerPath,
+          localizationScriptContainerPath = localizationScriptInput map { _.containerPath },
+          delocalizationScriptContainerPath = delocalizationScriptInput map { _.containerPath },
           logGcsPath = jesLogPath,
           inputOutputParameters = inputOutputParameters,
           projectId = googleProject(jobDescriptor.workflowDescriptor),
@@ -469,6 +476,10 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
     if (forceAbort) tryAbort(jobForResumption)
     Future.successful(PendingExecutionHandle(jobDescriptor, jobForResumption, Option(Run(jobForResumption)), previousState = None))
   }
+
+  protected def uploadLocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = Future.successful(())
+
+  protected def uploadDelocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = Future.successful(())
 
   private def createNewJob(): Future[ExecutionHandle] = {
     // Want to force runtimeAttributes to evaluate so we can fail quickly now if we need to:
@@ -520,6 +531,9 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
       customLabels <- Future.fromTry(GoogleLabels.fromWorkflowOptions(workflowDescriptor.workflowOptions))
       jesParameters <- generateInputOutputParameters
       createParameters = createPipelineParameters(jesParameters, customLabels)
+      localizationConfiguration = initializationData.papiConfiguration.papiAttributes.localizationConfiguration
+      _ <- uploadLocalizationFile(createParameters, localizationScriptInput.get.cloudPath, localizationConfiguration)
+      _ <- uploadDelocalizationFile(createParameters, delocalizationScriptInput.get.cloudPath, localizationConfiguration)
       _ = this.hasDockerCredentials = createParameters.privateDockerKeyAndEncryptedToken.isDefined
       runId <- runPipeline(workflowId, createParameters, jobLogger)
       _ = sendGoogleLabelsToMetadata(customLabels)

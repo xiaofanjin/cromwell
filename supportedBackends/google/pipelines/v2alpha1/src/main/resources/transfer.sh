@@ -124,7 +124,7 @@ transfer() {
     attempt=1
     # Loop attempting transfers for this file or directory while attempts are not exhausted.
     while [[ ${attempt} -le ${max_attempts} ]]; do
-      # Note that the file versions of transfer functions will be passed an unused content_type parameter.
+      # Note the localization versions of transfer functions are passed a content_type parameter they will not use.
       ${transfer_fn_name} "$cloud" "$container" "$rpflag" "$content_type"
 
       if [[ $? = 0 ]]; then

@@ -57,6 +57,8 @@ trait JobPaths {
 
   def scriptFilename: String = "script"
   def dockerCidFilename: String = "docker_cid"
+  def localizationScriptFilename: String = "localization"
+  def delocalizationScriptFilename: String = "delocalization"
 
   def jobKey: BackendJobDescriptorKey
   lazy val callRoot = callPathBuilder(workflowPaths.workflowRoot, jobKey)
@@ -72,6 +74,8 @@ trait JobPaths {
   lazy val script = callExecutionRoot.resolve(scriptFilename)
   lazy val dockerCid = callExecutionRoot.resolve(dockerCidFilename)
   lazy val returnCode = callExecutionRoot.resolve(returnCodeFilename)
+  lazy val localizationScript = callExecutionRoot.resolve(localizationScriptFilename)
+  lazy val delocalizationScript = callExecutionRoot.resolve(delocalizationScriptFilename)
 
   // This is a `def` because `standardPaths` is a `var` that may be reassigned during the calculation of
   // standard output and error file names.
