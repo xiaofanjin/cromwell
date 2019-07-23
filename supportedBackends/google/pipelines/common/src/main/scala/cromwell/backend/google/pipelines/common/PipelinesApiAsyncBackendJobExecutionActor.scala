@@ -125,10 +125,6 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
   protected lazy val cmdInput =
     PipelinesApiFileInput(PipelinesApiJobPaths.JesExecParamName, pipelinesApiCallPaths.script, DefaultPathBuilder.get(pipelinesApiCallPaths.scriptFilename), workingDisk)
 
-  protected lazy val localizationScriptInput: Option[PipelinesApiFileInput] = None
-
-  protected lazy val delocalizationScriptInput: Option[PipelinesApiFileInput] = None
-
   protected lazy val dockerConfiguration = pipelinesConfiguration.dockerCredentials
 
   protected val previousRetryReasons: ErrorOr[PreviousRetryReasons] = PreviousRetryReasons.tryApply(jobDescriptor.prefetchedKvStoreEntries, jobDescriptor.key.attempt)
@@ -437,8 +433,6 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
           cloudWorkflowRoot = workflowPaths.workflowRoot,
           cloudCallRoot = callRootPath,
           commandScriptContainerPath = cmdInput.containerPath,
-          localizationScriptContainerPath = localizationScriptInput map { _.containerPath },
-          delocalizationScriptContainerPath = delocalizationScriptInput map { _.containerPath },
           logGcsPath = jesLogPath,
           inputOutputParameters = inputOutputParameters,
           projectId = googleProject(jobDescriptor.workflowDescriptor),
@@ -532,8 +526,8 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
       jesParameters <- generateInputOutputParameters
       createParameters = createPipelineParameters(jesParameters, customLabels)
       localizationConfiguration = initializationData.papiConfiguration.papiAttributes.localizationConfiguration
-      _ <- uploadLocalizationFile(createParameters, localizationScriptInput.get.cloudPath, localizationConfiguration)
-      _ <- uploadDelocalizationFile(createParameters, delocalizationScriptInput.get.cloudPath, localizationConfiguration)
+      _ <- uploadLocalizationFile(createParameters, jobPaths.localizationScript, localizationConfiguration)
+      _ <- uploadDelocalizationFile(createParameters, jobPaths.delocalizationScript, localizationConfiguration)
       _ = this.hasDockerCredentials = createParameters.privateDockerKeyAndEncryptedToken.isDefined
       runId <- runPipeline(workflowId, createParameters, jobLogger)
       _ = sendGoogleLabelsToMetadata(customLabels)

@@ -66,8 +66,6 @@ object PipelinesApiRequestFactory {
                                       cloudWorkflowRoot: Path,
                                       cloudCallRoot: Path,
                                       commandScriptContainerPath: Path,
-                                      localizationScriptContainerPath: Option[Path],
-                                      delocalizationScriptContainerPath: Option[Path],
                                       logGcsPath: Path,
                                       inputOutputParameters: InputOutputParameters,
                                       projectId: String,

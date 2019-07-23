@@ -47,16 +47,6 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
       })
   }
 
-  override protected lazy val localizationScriptInput: Option[PipelinesApiFileInput] = Option(
-    PipelinesApiFileInput(PipelinesApiJobPaths.LocalizationScriptParameterName, pipelinesApiCallPaths.localizationScript,
-      DefaultPathBuilder.get(pipelinesApiCallPaths.localizationScriptFilename), workingDisk)
-  )
-
-  override protected lazy val delocalizationScriptInput: Option[PipelinesApiFileInput] = Option(
-    PipelinesApiFileInput(PipelinesApiJobPaths.DelocalizationScriptParameterName, pipelinesApiCallPaths.delocalizationScript,
-      DefaultPathBuilder.get(pipelinesApiCallPaths.delocalizationScriptFilename), workingDisk)
-  )
-
   private val gcsPathMatcher = "^gs://?([^/]+)/.*".r
 
   private def groupParametersByBucket[T <: PipelinesParameter](parameters: List[T]): Map[String, List[T]] = {
