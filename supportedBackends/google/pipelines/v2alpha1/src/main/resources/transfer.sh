@@ -72,21 +72,26 @@ delocalize_message() {
 # Transfer a bundle of files xor directories to or from the same GCS bucket.
 transfer() {
   local direction="$1"
-  local file_or_directory="$2"
+  local files_or_directories="$2"
   local project="$3"
   local max_attempts="$4"
+
+  shift; shift; shift; shift # direction; files_or_directories; project; max_attempts
 
   if [[ "$direction" != "localize" && "$direction" != "delocalize" ]]; then
     echo "direction must be 'localize' or 'delocalize' but got '$direction'"
     exit 1
   fi
 
-  if [[ "$file_or_directory" != "file" && "$file_or_directory" != "directory" ]]; then
-    echo "file_or_directory must be 'file' or 'directory' but got '$file_or_directory'"
+  transfer_fn_name=""
+  if [[ "$files_or_directories" = "files" ]]; then
+    transfer_fn_name="${direction}_file"
+  elif [[ "$files_or_directories" = "directories" ]]; then
+    transfer_fn_name="${direction}_directory"
+  else
+    echo "files_or_directories must be 'files' or 'directories' but got '$files_or_directories'"
     exit 1
   fi
-
-  shift; shift; shift; shift # direction; file_or_directory; project; max_attempts
 
   # Whether the requester pays status of the GCS bucket is certain. rp status is presumed false until proven otherwise.
   local rp_status_certain=false
@@ -97,7 +102,7 @@ transfer() {
   # One race-condition sidestepping sleep 5 to rule them all.
   sleep 5
 
-  # Loop while there are still files or directories to localize or delocalize.
+  # Loop while there are still files or directories in the bundle to transfer.
   while [[ $# -gt 0 ]]; do
     cloud="$1"
     container="$2"
@@ -118,8 +123,6 @@ transfer() {
     else
       rpflag=""
     fi
-
-    transfer_fn_name="${direction}_${file_or_directory}"
 
     attempt=1
     # Loop attempting transfers for this file or directory while attempts are not exhausted.

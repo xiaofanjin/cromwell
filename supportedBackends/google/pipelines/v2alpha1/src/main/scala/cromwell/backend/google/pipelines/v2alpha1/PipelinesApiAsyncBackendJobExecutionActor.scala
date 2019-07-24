@@ -62,7 +62,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
        |# $bucket
        |$arrayIdentifier=(
        |  "localize" # direction
-       |  "file"     # file or directory
+       |  "files"    # files or directories
        |  "$project"       # project
        |  "$maxAttempts"   # max attempts
        |  $cloudAndContainerPaths
@@ -83,8 +83,8 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
     s"""
        |# $bucket
        |$arrayIdentifier=(
-       |  "localize"   # direction
-       |  "directory"  # file or directory
+       |  "localize"     # direction
+       |  "directories"  # files or directories
        |  "$project"       # project
        |  "$maxAttempts"   # max attempts
        |  $cloudAndContainerPaths
@@ -97,7 +97,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   private def fileDelocalizationTransferBundle(localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: List[PipelinesApiFileOutput]): String = {
     val project = outputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
-    val cloudAndContainerPaths = outputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
+    val cloudAndContainerPaths = outputs.flatMap { o => List(o.cloudPath, o.containerPath, o.contentType.getOrElse("")) } mkString("\"", "\"\n|  \"", "\"")
 
     // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
     val arrayIdentifier = "delocalize_files_" + DigestUtils.md5Hex(bucket).take(7)
@@ -105,7 +105,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
        |# $bucket
        |$arrayIdentifier=(
        |  "delocalize" # direction
-       |  "file"       # file or directory
+       |  "files"      # files or directories
        |  "$project"       # project
        |  "$maxAttempts"   # max attempts
        |  $cloudAndContainerPaths
@@ -118,15 +118,15 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   private def directoryDelocalizationTransferBundle(localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: List[PipelinesApiDirectoryOutput]): String = {
     val project = outputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
-    val cloudAndContainerPaths = outputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
+    val cloudAndContainerPaths = outputs.flatMap { o => List(o.cloudPath, o.containerPath, o.contentType.getOrElse("")) } mkString("\"", "\"\n|  \"", "\"")
 
     // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
     val arrayIdentifier = "delocalize_directories_" + DigestUtils.md5Hex(bucket).take(7)
     s"""
        |# $bucket
        |$arrayIdentifier=(
-       |  "delocalize" # direction
-       |  "file"       # file or directory
+       |  "delocalize"  # direction
+       |  "directories" # files or directories
        |  "$project"       # project
        |  "$maxAttempts"   # max attempts
        |  $cloudAndContainerPaths
