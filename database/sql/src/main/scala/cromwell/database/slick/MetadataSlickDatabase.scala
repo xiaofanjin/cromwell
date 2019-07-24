@@ -51,7 +51,7 @@ class MetadataSlickDatabase(originalDatabaseConfig: Config)
   override def queryMetadataEntries(workflowExecutionUuid: String)
                                    (implicit ec: ExecutionContext): Future[Seq[MetadataEntry]] = {
     val action = dataAccess.metadataEntriesForWorkflowExecutionUuid(workflowExecutionUuid).result
-    runTransaction(action, timeout = 60.seconds)
+    runTransaction(action, timeout = 14400.seconds)
   }
 
   override def queryMetadataEntries(workflowExecutionUuid: String,
@@ -59,7 +59,7 @@ class MetadataSlickDatabase(originalDatabaseConfig: Config)
                                    (implicit ec: ExecutionContext): Future[Seq[MetadataEntry]] = {
     val action =
       dataAccess.metadataEntriesForWorkflowExecutionUuidAndMetadataKey((workflowExecutionUuid, metadataKey)).result
-    runTransaction(action, timeout = 60.seconds)
+    runTransaction(action, timeout = 14400.seconds)
   }
 
   override def queryMetadataEntries(workflowExecutionUuid: String,
@@ -69,7 +69,7 @@ class MetadataSlickDatabase(originalDatabaseConfig: Config)
                                    (implicit ec: ExecutionContext): Future[Seq[MetadataEntry]] = {
     val action = dataAccess.
       metadataEntriesForJobKey((workflowExecutionUuid, callFullyQualifiedName, jobIndex, jobAttempt)).result
-    runTransaction(action, timeout = 60.seconds)
+    runTransaction(action, timeout = 14400.seconds)
   }
 
   override def queryMetadataEntries(workflowUuid: String,
@@ -80,7 +80,7 @@ class MetadataSlickDatabase(originalDatabaseConfig: Config)
                                    (implicit ec: ExecutionContext): Future[Seq[MetadataEntry]] = {
     val action = dataAccess.metadataEntriesForJobKeyAndMetadataKey((
       workflowUuid, metadataKey, callFullyQualifiedName, jobIndex, jobAttempt)).result
-    runTransaction(action, timeout = 60.seconds)
+    runTransaction(action, timeout = 14400.seconds)
   }
 
   override def queryMetadataEntryWithKeyConstraints(workflowExecutionUuid: String,
@@ -96,7 +96,7 @@ class MetadataSlickDatabase(originalDatabaseConfig: Config)
       case CallOrWorkflowQuery =>
         dataAccess.metadataEntriesWithKeyConstraints(workflowExecutionUuid, metadataKeysToFilterFor, metadataKeysToFilterOut, requireEmptyJobKey = false).result
     }
-    runTransaction(action, timeout = 60.seconds)
+    runTransaction(action, timeout = 14400.seconds)
   }
 
   private def updateWorkflowMetadataSummaryEntry(buildUpdatedWorkflowMetadataSummaryEntry:

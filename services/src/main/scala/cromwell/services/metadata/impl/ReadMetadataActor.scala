@@ -35,8 +35,10 @@ class ReadMetadataActor extends Actor with ActorLogging with MetadataDatabaseAcc
   private def queryAndRespond(query: MetadataQuery): Unit = {
     val sndr = sender()
     queryMetadataEvents(query) onComplete {
-      case Success(m) => sndr ! MetadataLookupResponse(query, m)
-      case Failure(t) => sndr ! MetadataServiceKeyLookupFailed(query, t)
+      case Success(m) =>
+        sndr ! MetadataLookupResponse(query, m)
+      case Failure(t) =>
+        sndr ! MetadataServiceKeyLookupFailed(query, t)
     }
   }
 
