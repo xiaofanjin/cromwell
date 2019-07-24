@@ -36,7 +36,7 @@ delocalize_file() {
   local content="$4"
 
   local content_flag=$(gsutil_content_flag $content)
-  # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments.
+  # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
   rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} cp "$container" "$cloud"
 }
 
@@ -47,7 +47,7 @@ delocalize_directory() {
   local content="$4"
 
   local content_flag=$(gsutil_content_flag $content)
-  # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments.
+  # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
   rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} rsync -r "$container" "$cloud"
 }
 

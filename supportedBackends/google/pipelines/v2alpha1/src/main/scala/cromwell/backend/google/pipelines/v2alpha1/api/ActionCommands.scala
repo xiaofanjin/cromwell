@@ -80,13 +80,7 @@ object ActionCommands {
        |  sleep ${duration.toSeconds}
        |done""".stripMargin
 
-  def retry(f: => String)(implicit localizationConfiguration: LocalizationConfiguration, wait: FiniteDuration): String =
-    doRetry(exitOnSuccess = true)(f)(localizationConfiguration, wait)
-
-  def doRetry(exitOnSuccess: Boolean)(f: => String)(implicit localizationConfiguration: LocalizationConfiguration, wait: FiniteDuration): String = {
-    // With ungrouped localizations this script should always exit, for grouped localizations only exit on failure.
-    val exitOrNot = if (exitOnSuccess) """exit "$RC"""" else """if [ "$RC" != "0" ]; then exit "$RC"; fi"""
-
+  def retry(f: => String)(implicit localizationConfiguration: LocalizationConfiguration, wait: FiniteDuration) = {
     s"""for i in $$(seq ${localizationConfiguration.localizationAttempts}); do
        |  (
        |    $f
@@ -100,7 +94,7 @@ object ActionCommands {
        |    sleep ${wait.toSeconds}
        |  fi
        |done
-       |$exitOrNot""".stripMargin
+       |exit "$$RC"""".stripMargin
   }
 
   def delocalizeFileOrDirectory(containerPath: Path, cloudPath: Path, contentType: Option[ContentType])(implicit localizationConfiguration: LocalizationConfiguration) = {
@@ -111,24 +105,21 @@ object ActionCommands {
        |fi""".stripMargin
   }
 
-  def localizeDirectory(cloudPath: Path, containerPath: Path, exitOnSuccess: Boolean = true)(implicit localizationConfiguration: LocalizationConfiguration) = doRetry(exitOnSuccess) {
-    recoverRequesterPaysError(cloudPath, exitOnSuccess) { flag =>
+  def localizeDirectory(cloudPath: Path, containerPath: Path)(implicit localizationConfiguration: LocalizationConfiguration) = retry {
+    recoverRequesterPaysError(cloudPath) { flag =>
       s"${containerPath |> makeContainerDirectory} && rm -f $$HOME/.config/gcloud/gce && gsutil $flag -m rsync -r ${cloudPath.escape} ${containerPath.escape}"
     }
   }
 
-  def localizeFile(cloudPath: Path, containerPath: Path, exitOnSuccess: Boolean = true)(implicit localizationConfiguration: LocalizationConfiguration) = doRetry(exitOnSuccess) {
-    recoverRequesterPaysError(cloudPath, exitOnSuccess) { flag =>
+  def localizeFile(cloudPath: Path, containerPath: Path)(implicit localizationConfiguration: LocalizationConfiguration) = retry {
+    recoverRequesterPaysError(cloudPath) { flag =>
       s"rm -f $$HOME/.config/gcloud/gce && gsutil $flag cp ${cloudPath.escape} ${containerPath.escape}"
     }
   }
 
-  def recoverRequesterPaysError(path: Path, exitOnSuccess: Boolean = true)(f: String => String): String = {
+  def recoverRequesterPaysError(path: Path)(f: String => String) = {
     val commandWithoutProject = f("")
     val commandWithProject = f(s"-u ${path.projectId}")
-
-    // With ungrouped localizations this script should exit on success, for grouped localizations just "true" and keep going.
-    val exitOrNot = if (exitOnSuccess) "exit 0" else "true"
 
     s"""$commandWithoutProject > gsutil_output.txt 2>&1
        |# Record the exit code of the gsutil command without project flag
@@ -146,7 +137,7 @@ object ActionCommands {
        |    exit "$$RC_GSUTIL"
        |  fi
        |else
-       |  $exitOrNot
+       |  exit 0
        |fi""".stripMargin
   }
 
@@ -158,6 +149,6 @@ object ActionCommands {
 
       s"""python -c 'import base64; print(base64.b64decode("$base64EncodedScript"));' > $scriptPath && """ +
       s"chmod u+x $scriptPath && " +
-      s"/bin/bash $scriptPath"
+      s"sh $scriptPath"
   }
 }

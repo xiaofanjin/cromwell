@@ -30,7 +30,6 @@ trait PipelinesParameterConversions {
       fileInput.cloudPath match {
         case drsPath: DrsPath =>
           import cromwell.backend.google.pipelines.v2alpha1.api.ActionCommands.ShellPath
-
           import collection.JavaConverters._
 
           val drsFileSystemProvider = drsPath.drsPath.getFileSystem.provider.asInstanceOf[DrsCloudNioFileSystemProvider]
@@ -95,7 +94,7 @@ trait PipelinesParameterConversions {
     override def toActions(directoryInput: PipelinesApiDirectoryInput, mounts: List[Mount])
                           (implicit retryPolicy: LocalizationConfiguration): List[Action] = {
       directoryInput.cloudPath match {
-        case _: GcsPath => Nil
+        case _: GcsPath => Nil // GCS paths will be localized with a separate localization script.
         case _ =>
           val labels = ActionBuilder.parameterLabels(directoryInput)
           val describeAction = ActionBuilder.describeParameter(directoryInput, labels)
@@ -111,7 +110,7 @@ trait PipelinesParameterConversions {
     override def toActions(fileOutput: PipelinesApiFileOutput, mounts: List[Mount])
                           (implicit retryPolicy: LocalizationConfiguration): List[Action] = {
       fileOutput.cloudPath match {
-        case _: GcsPath => Nil
+        case _: GcsPath => Nil // GCS paths will be delocalized with a separate localization script.
         case _ =>
           // If the output is a "secondary file", it actually could be a directory but we won't know before runtime.
           // The fileOrDirectory method will generate a command that can cover both cases
@@ -158,7 +157,7 @@ trait PipelinesParameterConversions {
     override def toActions(directoryOutput: PipelinesApiDirectoryOutput, mounts: List[Mount])
                           (implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
       directoryOutput.cloudPath match {
-        case _: GcsPath => Nil
+        case _: GcsPath => Nil // GCS paths will be delocalized with a separate localization script.
         case _ =>
           val labels = ActionBuilder.parameterLabels(directoryOutput)
           val describeAction = ActionBuilder.describeParameter(directoryOutput, labels)

@@ -66,6 +66,7 @@ object ActionBuilder {
 
   // TODO revert this to google/cloud-sdk:slim once latest is unbroken
   // TODO https://github.com/GoogleCloudPlatform/gsutil/issues/806
+  // TODO or maybe leave it pinned to a particular version for provenance / reproducibility
   val cloudSdkImage = "google/cloud-sdk:251.0.0-slim"
   def cloudSdkAction: Action = new Action().setImageUri(cloudSdkImage)
 
@@ -176,29 +177,21 @@ object ActionBuilder {
     starting ++ actions ++ done
   }
 
-  def localizingInputMessage(pipelinesParameter: PipelinesParameter): String = {
-    "Localizing input %s -> %s".format(
-      shellEscaped(pipelinesParameter.cloudPath),
-      shellEscaped(pipelinesParameter.containerPath),
-    )
-  }
-
-  def delocalizingOutputMessage(pipelinesParameter: PipelinesParameter): String = {
-    "Delocalizing output %s -> %s".format(
-      shellEscaped(pipelinesParameter.containerPath),
-      shellEscaped(pipelinesParameter.cloudPath),
-    )
-  }
-
   /** Creates an Action that describes the parameter localization or delocalization. */
   def describeParameter(pipelinesParameter: PipelinesParameter,
                         actionLabels: Map[String, String]): Action = {
     pipelinesParameter match {
       case _: PipelinesApiInput =>
-        val message = localizingInputMessage(pipelinesParameter)
+        val message = "Localizing input %s -> %s".format(
+          shellEscaped(pipelinesParameter.cloudPath),
+          shellEscaped(pipelinesParameter.containerPath),
+        )
         ActionBuilder.logTimestampedAction(message, List(), actionLabels)
       case _: PipelinesApiOutput =>
-        val message = delocalizingOutputMessage(pipelinesParameter)
+        val message = "Delocalizing output %s -> %s".format(
+          shellEscaped(pipelinesParameter.containerPath),
+          shellEscaped(pipelinesParameter.cloudPath),
+        )
         ActionBuilder.logTimestampedAction(message, List(ActionFlag.AlwaysRun), actionLabels)
     }
   }
