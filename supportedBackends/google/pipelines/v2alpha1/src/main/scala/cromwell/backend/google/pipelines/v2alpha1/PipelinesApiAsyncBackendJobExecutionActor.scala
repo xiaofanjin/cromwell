@@ -159,14 +159,26 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
 
   override def uploadLocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
     val mounts = PipelinesConversions.toMounts(createPipelineParameters)
-    val content = generateLocalizationScript(createPipelineParameters.inputOutputParameters.fileInputParameters, mounts)(localizationConfiguration)
-    asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
+    // Only GCS inputs are currently being localized by the localization script.
+    val gcsInputs = createPipelineParameters.inputOutputParameters.fileInputParameters.filter { _.cloudPath.isInstanceOf[GcsPath] }
+    gcsInputs match {
+      case Nil => Future.successful(())
+      case _ =>
+        val content = generateLocalizationScript(gcsInputs, mounts)(localizationConfiguration)
+        asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
+    }
   }
 
   override def uploadDelocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
     val mounts = PipelinesConversions.toMounts(createPipelineParameters)
-    val content = generateDelocalizationScript(createPipelineParameters.inputOutputParameters.fileOutputParameters, mounts)(localizationConfiguration)
-    asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
+    // Only GCS outputs are currently being localized by the localization script.
+    val gcsOutputs = createPipelineParameters.inputOutputParameters.fileOutputParameters.filter { _.cloudPath.isInstanceOf[GcsPath] }
+    gcsOutputs match {
+      case Nil => Future.successful(())
+      case _ =>
+        val content = generateDelocalizationScript(gcsOutputs, mounts)(localizationConfiguration)
+        asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
+    }
   }
 
   // Simply create a PipelinesApiDirectoryOutput in v2 instead of globbing
