@@ -7,6 +7,7 @@ import cromwell.backend.google.pipelines.common.PipelinesApiConfigurationAttribu
 import cromwell.backend.google.pipelines.common._
 import cromwell.backend.google.pipelines.common.api.PipelinesApiRequestFactory.CreatePipelineParameters
 import cromwell.backend.google.pipelines.common.io.PipelinesApiWorkingDisk
+import cromwell.backend.google.pipelines.v2alpha1.PipelinesApiAsyncBackendJobExecutionActor._
 import cromwell.backend.standard.StandardAsyncExecutionActorParams
 import cromwell.core.path.{DefaultPathBuilder, Path}
 import cromwell.filesystems.gcs.GcsPathBuilder.ValidFullGcsPath
@@ -45,17 +46,6 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
       key -> womFile.collectAsSeq({
         case womFile: WomFile if !inputsToNotLocalize.contains(womFile) => womFile
       })
-  }
-
-  private val gcsPathMatcher = "^gs://?([^/]+)/.*".r
-
-  private def groupParametersByBucket[T <: PipelinesParameter](parameters: List[T]): Map[String, List[T]] = {
-    parameters.foldRight(Map[String, List[T]]().withDefault(_ => List.empty)) { case (p, acc) =>
-      p.cloudPath.toString match {
-        case gcsPathMatcher(bucket) =>
-          acc + (bucket -> (p :: acc(bucket)))
-      }
-    }
   }
 
   private lazy val transferScriptTemplate =
@@ -275,5 +265,18 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
     val destination = callRootPath.resolve(normalizedPath)
     val jesFileOutput = PipelinesApiFileOutput(makeSafeReferenceName(womFile.value), destination, relpath, disk, fileEvaluation.optional, fileEvaluation.secondary)
     List(jesFileOutput)
+  }
+}
+
+object PipelinesApiAsyncBackendJobExecutionActor {
+  private val gcsPathMatcher = "^gs://?([^/]+)/.*".r
+
+  private [v2alpha1] def groupParametersByBucket[T <: PipelinesParameter](parameters: List[T]): Map[String, List[T]] = {
+    parameters.foldRight(Map[String, List[T]]().withDefault(_ => List.empty)) { case (p, acc) =>
+      p.cloudPath.toString match {
+        case gcsPathMatcher(bucket) =>
+          acc + (bucket -> (p :: acc(bucket)))
+      }
+    }
   }
 }

@@ -6,7 +6,7 @@ import cromwell.backend.google.pipelines.common.PipelinesApiFileInput
 import cromwell.core.path.DefaultPathBuilder
 import org.scalatest.{FlatSpec, Matchers}
 
-class PipelinesParameterConversionsSpec extends FlatSpec with Matchers {
+class PipelinesApiAsyncBackendJobExecutionActorSpec extends FlatSpec with Matchers {
   behavior of "PipelinesParameterConversions"
 
   it should "group files by bucket" in {
@@ -34,6 +34,6 @@ class PipelinesParameterConversionsSpec extends FlatSpec with Matchers {
       Map("bar" -> (List(2, 3, 4) map inputs.apply)) ++
       Map("baz" -> List(inputs(5)))
 
-    PipelinesParameterConversions.groupInputsByBucket(inputs) shouldEqual expected
+    PipelinesApiAsyncBackendJobExecutionActor.groupParametersByBucket(inputs) shouldEqual expected
   }
 }

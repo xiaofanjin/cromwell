@@ -11,13 +11,10 @@ import cromwell.backend.google.pipelines.v2alpha1.api.ActionBuilder._
 import cromwell.backend.google.pipelines.v2alpha1.api.ActionCommands._
 import cromwell.backend.google.pipelines.v2alpha1.api.{ActionBuilder, ActionFlag}
 import cromwell.filesystems.drs.DrsPath
-import cromwell.filesystems.gcs.GcsPath
 import cromwell.filesystems.http.HttpPath
 import cromwell.filesystems.sra.SraPath
-import org.apache.commons.codec.digest.DigestUtils
 import simulacrum.typeclass
 
-import scala.io.Source
 import scala.language.implicitConversions
 @typeclass trait ToParameter[A <: PipelinesParameter] {
   def toActions(p: A, mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): NonEmptyList[Action]
@@ -167,94 +164,5 @@ trait PipelinesParameterConversions {
       case fileOutput: PipelinesApiFileOutput => fileOutputToParameter.toActions(fileOutput, mounts)
       case directoryOutput: PipelinesApiDirectoryOutput => directoryOutputToParameter.toActions(directoryOutput, mounts)
     }
-  }
-}
-
-object PipelinesParameterConversions {
-  import cromwell.backend.google.pipelines.v2alpha1.PipelinesConversions._
-  import cromwell.backend.google.pipelines.v2alpha1.ToParameter.ops._
-
-  private val gcsPathMatcher = "^gs://?([^/]+)/.*".r
-
-  private def groupInputsByBucket(gcsInputs: List[PipelinesApiInput]): Map[String, List[PipelinesApiInput]] = {
-    gcsInputs.foldRight(Map[String, List[PipelinesApiInput]]().withDefault(_ => List.empty)) { case (i, acc) =>
-      i.cloudPath.toString match {
-        case gcsPathMatcher(bucket) =>
-          acc + (bucket -> (i :: acc(bucket)))
-      }
-    }
-  }
-
-  private lazy val transferScriptTemplate =
-    Source.fromInputStream(Thread.currentThread.getContextClassLoader.getResourceAsStream("transfer.sh")).mkString
-
-  def groupedGcsFileInputActions(inputs: List[PipelinesApiFileInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
-    // Cromwell makes a bucket (transfer) list.
-
-    def transferBundle(bucket: String, inputs: List[PipelinesApiInput]): String = {
-      val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
-      val maxAttempts = localizationConfiguration.localizationAttempts
-      val cloudAndContainerPaths = inputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
-
-      // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
-      val arrayIdentifier = "localize_files_" + DigestUtils.md5Hex(bucket).take(7)
-      s"""
-      |# $bucket
-      |$arrayIdentifier=(
-      |  "localize" # direction
-      |  "file"     # file or directory
-      |  "$project"       # project
-      |  "$maxAttempts"   # max attempts
-      |  $cloudAndContainerPaths
-      |)
-      |
-      |transfer "$${$arrayIdentifier[@]}"
-      """.stripMargin
-    }
-
-    val transferBundles = groupInputsByBucket(inputs).toList map (transferBundle _).tupled mkString "\n"
-
-    val labels = Map(
-      Key.Tag -> Value.Localization,
-      Key.InputName -> "Input files"
-    )
-
-    List(cloudSdkShellAction(transferScriptTemplate + transferBundles)(mounts = mounts, labels = labels))
-  }
-
-  def groupedGcsDirectoryInputActions(inputs: List[PipelinesApiDirectoryInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
-    // Build Actions for groups of directories.
-    import mouse.all._
-    val commands = for {
-      grouping <- inputs.grouped(10)
-      command = grouping flatMap { i =>
-        List(
-          ActionBuilder.localizingInputMessage(i) |> ActionBuilder.timestampedMessage(withSleep = false),
-          localizeDirectory(i.cloudPath, i.containerPath, exitOnSuccess = false)
-        )
-      } mkString "\n"
-    } yield command
-
-    val labels = Map(
-      Key.Tag -> Value.Localization,
-      Key.InputName -> "Input directories"
-    )
-    commands.toList map { command => cloudSdkShellAction("sleep 5\n" + command)(mounts = mounts, labels = labels) }
-  }
-
-  def groupedGcsInputActions(gcsInputs: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
-    val filesList = List(gcsInputs collect { case i: PipelinesApiFileInput => i })
-    val directoriesList = List(gcsInputs collect { case i: PipelinesApiDirectoryInput => i })
-
-    // The flatMapping is to avoid calling the relevant `grouped...` method if there are no inputs of that type.
-    filesList.flatMap { files => groupedGcsFileInputActions(files, mounts) } ++
-      directoriesList.flatMap { directories => groupedGcsDirectoryInputActions(directories, mounts) }
-  }
-
-  def groupedLocalizationActions(ps: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
-    val (gcsInputs, nonGcsInputs) = ps partition { _.cloudPath.isInstanceOf[GcsPath] }
-    val nonGcsInputActions: List[Action] = nonGcsInputs.flatMap { _.toActions(mounts).toList }
-
-    groupedGcsInputActions(gcsInputs, mounts) ++ nonGcsInputActions
   }
 }
