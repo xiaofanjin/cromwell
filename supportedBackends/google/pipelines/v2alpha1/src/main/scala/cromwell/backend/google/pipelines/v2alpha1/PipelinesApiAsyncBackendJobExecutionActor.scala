@@ -159,26 +159,20 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
 
   override def uploadLocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
     val mounts = PipelinesConversions.toMounts(createPipelineParameters)
-    // Only GCS inputs are currently being localized by the localization script.
+    // Only GCS inputs are currently being localized by the localization script. There will always be at least one GCS input
+    // parameter in the form of the command script.
     val gcsInputs = createPipelineParameters.inputOutputParameters.fileInputParameters.filter { _.cloudPath.isInstanceOf[GcsPath] }
-    gcsInputs match {
-      case Nil => Future.successful(())
-      case _ =>
-        val content = generateLocalizationScript(gcsInputs, mounts)(localizationConfiguration)
-        asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
-    }
+    val content = generateLocalizationScript(gcsInputs, mounts)(localizationConfiguration)
+    asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
   }
 
   override def uploadDelocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
     val mounts = PipelinesConversions.toMounts(createPipelineParameters)
-    // Only GCS outputs are currently being localized by the localization script.
+    // Only GCS outputs are currently being localized by the localization script. There will always be GCS output
+    // parameters in the form of output detritus.
     val gcsOutputs = createPipelineParameters.inputOutputParameters.fileOutputParameters.filter { _.cloudPath.isInstanceOf[GcsPath] }
-    gcsOutputs match {
-      case Nil => Future.successful(())
-      case _ =>
-        val content = generateDelocalizationScript(gcsOutputs, mounts)(localizationConfiguration)
-        asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
-    }
+    val content = generateDelocalizationScript(gcsOutputs, mounts)(localizationConfiguration)
+    asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
   }
 
   // Simply create a PipelinesApiDirectoryOutput in v2 instead of globbing
