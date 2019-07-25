@@ -1,4 +1,6 @@
-set -x
+# The `papi_v2_log` Centaur test is opinionated about the number of log messages around localization/delocalization.
+# The trace logging of `set -x` must be turned off for the `papi_v2_log` test to pass.
+set +x
 
 gsutil_log="gsutil_output.txt"
 
@@ -34,7 +36,7 @@ delocalize_file() {
   local rpflag="$3"
   local content="$4"
 
-  local content_flag=$(gsutil_content_flag ${content})
+  local content_flag=$(gsutil_content_flag $content)
   # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
   rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} cp "$container" "$cloud" > "$gsutil_log" 2>&1
 }
@@ -45,7 +47,7 @@ delocalize_directory() {
   local rpflag="$3"
   local content="$4"
 
-  local content_flag=$(gsutil_content_flag ${content})
+  local content_flag=$(gsutil_content_flag $content)
   # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
   rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
 }
