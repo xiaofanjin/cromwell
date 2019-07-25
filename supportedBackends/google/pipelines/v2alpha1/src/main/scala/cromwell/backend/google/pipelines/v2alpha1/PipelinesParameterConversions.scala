@@ -109,46 +109,42 @@ trait PipelinesParameterConversions {
   implicit val fileOutputToParameter = new ToParameter[PipelinesApiFileOutput] {
     override def toActions(fileOutput: PipelinesApiFileOutput, mounts: List[Mount])
                           (implicit retryPolicy: LocalizationConfiguration): List[Action] = {
-      fileOutput.cloudPath match {
-        case _: GcsPath => Nil // GCS paths will be delocalized with a separate localization script.
-        case _ =>
-          // If the output is a "secondary file", it actually could be a directory but we won't know before runtime.
-          // The fileOrDirectory method will generate a command that can cover both cases
-          val copy = if (fileOutput.secondary)
-            delocalizeFileOrDirectory(fileOutput.containerPath, fileOutput.cloudPath, fileOutput.contentType)
-          else
-            delocalizeFile(fileOutput.containerPath, fileOutput.cloudPath, fileOutput.contentType)
+      // If the output is a "secondary file", it actually could be a directory but we won't know before runtime.
+      // The fileOrDirectory method will generate a command that can cover both cases
+      val copy = if (fileOutput.secondary)
+        delocalizeFileOrDirectory(fileOutput.containerPath, fileOutput.cloudPath, fileOutput.contentType)
+      else
+        delocalizeFile(fileOutput.containerPath, fileOutput.cloudPath, fileOutput.contentType)
 
-          lazy val copyOnlyIfExists = ifExist(fileOutput.containerPath) {
-            copy
+      lazy val copyOnlyIfExists = ifExist(fileOutput.containerPath) {
+        copy
+      }
+
+      val copyCommand = if (fileOutput.optional || fileOutput.secondary) copyOnlyIfExists else copy
+
+      val labels = ActionBuilder.parameterLabels(fileOutput)
+      val describeAction = ActionBuilder.describeParameter(fileOutput, labels)
+
+      val delocalizationAction = cloudSdkShellAction(
+        copyCommand
+      )(mounts = mounts, flags = List(ActionFlag.AlwaysRun), labels = labels)
+
+      // If the file should be uploaded periodically, create 2 actions, a background one with periodic upload, and a normal one
+      // that will run at the end and make sure we get the most up to date version of the file
+      fileOutput.uploadPeriod match {
+        case Some(period) =>
+          val periodicLabels = labels collect {
+            case (key, _) if key == Key.Tag => key -> Value.Background
+            case (key, value) => key -> value
           }
+          val periodic = cloudSdkShellAction(
+            every(period) {
+              copyCommand
+            }
+          )(mounts = mounts, flags = List(ActionFlag.RunInBackground), labels = periodicLabels)
 
-          val copyCommand = if (fileOutput.optional || fileOutput.secondary) copyOnlyIfExists else copy
-
-          val labels = ActionBuilder.parameterLabels(fileOutput)
-          val describeAction = ActionBuilder.describeParameter(fileOutput, labels)
-
-          val delocalizationAction = cloudSdkShellAction(
-            copyCommand
-          )(mounts = mounts, flags = List(ActionFlag.AlwaysRun), labels = labels)
-
-          // If the file should be uploaded periodically, create 2 actions, a background one with periodic upload, and a normal one
-          // that will run at the end and make sure we get the most up to date version of the file
-          fileOutput.uploadPeriod match {
-            case Some(period) =>
-              val periodicLabels = labels collect {
-                case (key, _) if key == Key.Tag => key -> Value.Background
-                case (key, value) => key -> value
-              }
-              val periodic = cloudSdkShellAction(
-                every(period) {
-                  copyCommand
-                }
-              )(mounts = mounts, flags = List(ActionFlag.RunInBackground), labels = periodicLabels)
-
-              List(describeAction, delocalizationAction, periodic)
-            case None => List(describeAction, delocalizationAction)
-          }
+          List(describeAction, delocalizationAction, periodic)
+        case None => List(describeAction, delocalizationAction)
       }
     }
   }
@@ -156,16 +152,12 @@ trait PipelinesParameterConversions {
   implicit val directoryOutputToParameter = new ToParameter[PipelinesApiDirectoryOutput] {
     override def toActions(directoryOutput: PipelinesApiDirectoryOutput, mounts: List[Mount])
                           (implicit localizationConfiguration: LocalizationConfiguration): List[Action] = {
-      directoryOutput.cloudPath match {
-        case _: GcsPath => Nil // GCS paths will be delocalized with a separate localization script.
-        case _ =>
-          val labels = ActionBuilder.parameterLabels(directoryOutput)
-          val describeAction = ActionBuilder.describeParameter(directoryOutput, labels)
-          val delocalizationAction = cloudSdkShellAction(
-            delocalizeDirectory(directoryOutput.containerPath, directoryOutput.cloudPath, None)
-          )(mounts = mounts, flags = List(ActionFlag.AlwaysRun), labels = labels)
-          List(describeAction, delocalizationAction)
-      }
+      val labels = ActionBuilder.parameterLabels(directoryOutput)
+      val describeAction = ActionBuilder.describeParameter(directoryOutput, labels)
+      val delocalizationAction = cloudSdkShellAction(
+        delocalizeDirectory(directoryOutput.containerPath, directoryOutput.cloudPath, None)
+      )(mounts = mounts, flags = List(ActionFlag.AlwaysRun), labels = labels)
+      List(describeAction, delocalizationAction)
     }
   }
 
