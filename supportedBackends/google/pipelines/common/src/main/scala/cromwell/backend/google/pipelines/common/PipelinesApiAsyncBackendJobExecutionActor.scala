@@ -526,8 +526,10 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
       jesParameters <- generateInputOutputParameters
       createParameters = createPipelineParameters(jesParameters, customLabels)
       localizationConfiguration = initializationData.papiConfiguration.papiAttributes.localizationConfiguration
-      _ <- uploadLocalizationFile(createParameters, jobPaths.localizationScript, localizationConfiguration)
-      _ <- uploadDelocalizationFile(createParameters, jobPaths.delocalizationScript, localizationConfiguration)
+      localizationScriptCloudPath = jobPaths.callExecutionRoot / PipelinesApiJobPaths.LocalizationScriptName
+      _ <- uploadLocalizationFile(createParameters, localizationScriptCloudPath, localizationConfiguration)
+      delocalizationScriptCloudPath = jobPaths.callExecutionRoot / PipelinesApiJobPaths.DelocalizationScriptName
+      _ <- uploadDelocalizationFile(createParameters, delocalizationScriptCloudPath, localizationConfiguration)
       _ = this.hasDockerCredentials = createParameters.privateDockerKeyAndEncryptedToken.isDefined
       runId <- runPipeline(workflowId, createParameters, jobLogger)
       _ = sendGoogleLabelsToMetadata(customLabels)
