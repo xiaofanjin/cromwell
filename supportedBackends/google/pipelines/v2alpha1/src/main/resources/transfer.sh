@@ -34,7 +34,7 @@ delocalize_file() {
   local rpflag="$3"
   local content="$4"
 
-  local content_flag=$(gsutil_content_flag $content)
+  local content_flag=$(gsutil_content_flag ${content})
   # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
   rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} cp "$container" "$cloud" > "$gsutil_log" 2>&1
 }
@@ -45,7 +45,7 @@ delocalize_directory() {
   local rpflag="$3"
   local content="$4"
 
-  local content_flag=$(gsutil_content_flag $content)
+  local content_flag=$(gsutil_content_flag ${content})
   # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
   rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
 }
@@ -118,6 +118,7 @@ transfer() {
     ${message_fn} "$cloud" "$container"
 
     attempt=1
+    transfer_rc=0
     # Loop attempting transfers for this file or directory while attempts are not exhausted.
     while [[ ${attempt} -le ${max_attempts} ]]; do
 
@@ -129,8 +130,9 @@ transfer() {
 
       # Note the localization versions of transfer functions are passed a content_type parameter they will not use.
       ${transfer_fn_name} "$cloud" "$container" "$rpflag" "$content_type"
+      transfer_rc=$?
 
-      if [[ $? = 0 ]]; then
+      if [[ ${transfer_rc} = 0 ]]; then
         rp_status_certain=true
         break
       else
@@ -158,7 +160,7 @@ transfer() {
       fi
     done
     if [[ ${attempt} -gt ${max_attempts} ]]; then # out of attempts
-      exit $?
+      exit ${transfer_rc}
     fi
   done
 }
