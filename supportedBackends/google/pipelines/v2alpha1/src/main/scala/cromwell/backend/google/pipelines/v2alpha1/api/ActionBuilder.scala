@@ -66,7 +66,6 @@ object ActionBuilder {
 
   // TODO revert this to google/cloud-sdk:slim once latest is unbroken
   // TODO https://github.com/GoogleCloudPlatform/gsutil/issues/806
-  // TODO or maybe leave it pinned to a particular version for provenance / reproducibility
   val cloudSdkImage = "google/cloud-sdk:251.0.0-slim"
   def cloudSdkAction: Action = new Action().setImageUri(cloudSdkImage)
 

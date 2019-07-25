@@ -116,9 +116,7 @@ trait PipelinesParameterConversions {
       else
         delocalizeFile(fileOutput.containerPath, fileOutput.cloudPath, fileOutput.contentType)
 
-      lazy val copyOnlyIfExists = ifExist(fileOutput.containerPath) {
-        copy
-      }
+      lazy val copyOnlyIfExists = ifExist(fileOutput.containerPath) { copy }
 
       val copyCommand = if (fileOutput.optional || fileOutput.secondary) copyOnlyIfExists else copy
 
@@ -138,9 +136,7 @@ trait PipelinesParameterConversions {
             case (key, value) => key -> value
           }
           val periodic = cloudSdkShellAction(
-            every(period) {
-              copyCommand
-            }
+            every(period) { copyCommand }
           )(mounts = mounts, flags = List(ActionFlag.RunInBackground), labels = periodicLabels)
 
           List(describeAction, delocalizationAction, periodic)
