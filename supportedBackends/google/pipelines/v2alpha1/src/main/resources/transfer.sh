@@ -8,7 +8,7 @@ localize_file() {
   local container="$2"
   local rpflag="$3"
   # Do not quote rpflag, when that is set it will be -u project which should be two distinct arguments.
-  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m cp "$cloud" "$container" 2>&1 > "$gsutil_log"
+  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m cp "$cloud" "$container" > "$gsutil_log" 2>&1
 }
 
 localize_directory() {
@@ -16,7 +16,7 @@ localize_directory() {
   local container="$2"
   local rpflag="$3"
   # Do not quote rpflag, when that is set it will be -u project which should be two distinct arguments.
-  mkdir -p "${container}" && rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m rsync -r "${cloud}" "${container}"
+  mkdir -p "${container}" && rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m rsync -r "${cloud}" "${container}" > "$gsutil_log" 2>&1
 }
 
 # Content type is sometimes (not always) specified for delocalizations.
@@ -36,7 +36,7 @@ delocalize_file() {
 
   local content_flag=$(gsutil_content_flag $content)
   # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
-  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} cp "$container" "$cloud"
+  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} cp "$container" "$cloud" > "$gsutil_log" 2>&1
 }
 
 delocalize_directory() {
@@ -47,7 +47,7 @@ delocalize_directory() {
 
   local content_flag=$(gsutil_content_flag $content)
   # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
-  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} rsync -r "$container" "$cloud"
+  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
 }
 
 timestamped_message() {
@@ -117,15 +117,16 @@ transfer() {
     # Log what is being localized or delocalized (at least one test depends on this).
     ${message_fn} "$cloud" "$container"
 
-    if [[ ${use_requester_pays} = true ]]; then
-      rpflag="-u ${project}"
-    else
-      rpflag=""
-    fi
-
     attempt=1
     # Loop attempting transfers for this file or directory while attempts are not exhausted.
     while [[ ${attempt} -le ${max_attempts} ]]; do
+
+      if [[ ${use_requester_pays} = true ]]; then
+        rpflag="-u ${project}"
+      else
+        rpflag=""
+      fi
+
       # Note the localization versions of transfer functions are passed a content_type parameter they will not use.
       ${transfer_fn_name} "$cloud" "$container" "$rpflag" "$content_type"
 
@@ -133,7 +134,8 @@ transfer() {
         rp_status_certain=true
         break
       else
-        timestamped_message ${transfer_fn_name}' "$cloud" "$container" "$rpflag" "$content_type" failed'
+        timestamped_message "${transfer_fn_name} \"$cloud\" \"$container\" \"$rpflag\" \"$content_type\" failed"
+
         # Print the reason of the failure.
         cat "${gsutil_log}"
 
