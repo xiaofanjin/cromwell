@@ -9,8 +9,6 @@ object PipelinesApiJobPaths {
   val JesLogPathKey = "jesLog"
   val JesMonitoringKey = "monitoring"
   val JesExecParamName = "exec"
-  val LocalizationScriptParameterName = "localization"
-  val DelocalizationScriptParameterName = "delocalization"
 }
 
 final case class PipelinesApiJobPaths(override val workflowPaths: PipelinesApiWorkflowPaths, jobKey: BackendJobDescriptorKey) extends JobPaths {

@@ -15,9 +15,8 @@ localize_directory() {
   local cloud="$1"
   local container="$2"
   local rpflag="$3"
-  local dir=$(dirname "${container}")
   # Do not quote rpflag, when that is set it will be -u project which should be two distinct arguments.
-  mkdir -p "${dir}" && rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m rsync -r "${cloud}" "${container}"
+  mkdir -p "${container}" && rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m rsync -r "${cloud}" "${container}"
 }
 
 # Content type is sometimes (not always) specified for delocalizations.
