@@ -230,9 +230,17 @@ object CommandOutputBinding {
       case WomMaybePopulatedFileType =>
         //TODO: HACK ALERT - DB: I am starting on ticket https://github.com/broadinstitute/cromwell/issues/3092 which will redeem me of this mortal sin.
         val detritusFiles = List(
-          "rc.tmp", "docker_cid", "script", "script.background",
-          "script.submit", "stderr", "stderr.background",
-          "stdout", "stdout.background", "localization", "delocalization"
+          "delocalization",
+          "docker_cid",
+          "localization",
+          "rc.tmp",
+          "script",
+          "script.background",
+          "script.submit",
+          "stderr",
+          "stderr.background",
+          "stdout",
+          "stdout.background",
         )
         val globs: IOChecked[Seq[String]] = 
           ioFunctionSet.glob(cwlPath).toIOChecked
