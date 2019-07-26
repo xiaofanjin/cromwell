@@ -100,21 +100,32 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   }
 
   private def generateLocalizationScript(inputs: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
-    val fileInputs: List[PipelinesApiFileInput] = inputs collect { case i: PipelinesApiFileInput => i }
-    val directoryInputs: List[PipelinesApiDirectoryInput] = inputs collect { case i: PipelinesApiDirectoryInput => i }
+    // true if the collection represents files, false if directories.
+    val fileInputs = (inputs collect { case i: PipelinesApiFileInput => i }, true)
+    val directoryInputs = (inputs collect { case i: PipelinesApiDirectoryInput => i }, false)
 
-    val fileLocalizationBundles = groupParametersByBucket(fileInputs).toList map (localizationTransferBundle(localizationConfiguration, files = true) _).tupled mkString "\n"
-    val directoryLocalizationBundles = groupParametersByBucket(directoryInputs).toList map (localizationTransferBundle(localizationConfiguration, files = false) _).tupled mkString "\n"
+    // Make transfer bundles for files and directories separately.
+    val List(fileLocalizationBundles, directoryLocalizationBundles) = List(fileInputs, directoryInputs) map {
+      case (is, isFile) =>
+        val bundleFunction = (localizationTransferBundle(localizationConfiguration, isFile) _).tupled
+        groupParametersByBucket(is).toList map bundleFunction mkString "\n"
+    }
+
     transferScriptTemplate + fileLocalizationBundles + directoryLocalizationBundles
   }
 
-
   private def generateDelocalizationScript(outputs: List[PipelinesApiOutput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
-    val fileOutputs: List[PipelinesApiFileOutput] = outputs collect { case i: PipelinesApiFileOutput => i }
-    val directoryOutputs: List[PipelinesApiDirectoryOutput] = outputs collect { case i: PipelinesApiDirectoryOutput => i }
+    // true if the collection represents files, false if directories.
+    val fileOutputs = (outputs collect { case o: PipelinesApiFileOutput => o }, true)
+    val directoryOutputs = (outputs collect { case o: PipelinesApiDirectoryOutput => o }, false)
 
-    val fileLocalizationBundles = groupParametersByBucket(fileOutputs).toList map (delocalizationTransferBundle(localizationConfiguration, files = true) _).tupled mkString "\n"
-    val directoryLocalizationBundles = groupParametersByBucket(directoryOutputs).toList map (delocalizationTransferBundle(localizationConfiguration, files = false) _).tupled mkString "\n"
+    // Make transfer bundles for files and directories separately.
+    val List(fileLocalizationBundles, directoryLocalizationBundles) = List(fileOutputs, directoryOutputs) map {
+      case (os, isFile) =>
+        val bundleFunction = (delocalizationTransferBundle(localizationConfiguration, isFile) _).tupled
+        groupParametersByBucket(os).toList map bundleFunction mkString "\n"
+    }
+
     transferScriptTemplate + fileLocalizationBundles + directoryLocalizationBundles
   }
 
