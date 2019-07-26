@@ -51,18 +51,21 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   private lazy val transferScriptTemplate =
     Source.fromInputStream(Thread.currentThread.getContextClassLoader.getResourceAsStream("transfer.sh")).mkString
 
-  private def fileLocalizationTransferBundle(localizationConfiguration: LocalizationConfiguration)(bucket: String, inputs: List[PipelinesApiFileInput]): String = {
+  private def localizationTransferBundle[T <: PipelinesApiInput](localizationConfiguration: LocalizationConfiguration, files: Boolean)(bucket: String, inputs: List[T]): String = {
+    // `.head` is safe as there is always at least one input or this method wouldn't be invoked for the specified bucket.
     val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
     val cloudAndContainerPaths = inputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
 
+    val filesOrDirectories = if (files) "files" else "directories"
+
     // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
-    val arrayIdentifier = "localize_files_" + DigestUtils.md5Hex(bucket).take(7)
+    val arrayIdentifier = s"localize_${filesOrDirectories}_" + DigestUtils.md5Hex(bucket).take(7)
     s"""
        |# $bucket
        |$arrayIdentifier=(
        |  "localize" # direction
-       |  "files"    # files or directories
+       |  "$filesOrDirectories"    # files or directories
        |  "$project"       # project
        |  "$maxAttempts"   # max attempts
        |  $cloudAndContainerPaths
@@ -72,61 +75,21 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
       """.stripMargin
   }
 
-  private def directoryLocalizationTransferBundle(localizationConfiguration: LocalizationConfiguration)(bucket: String, inputs: List[PipelinesApiDirectoryInput]): String = {
-    val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
-    val maxAttempts = localizationConfiguration.localizationAttempts
-    val cloudAndContainerPaths = inputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
-
-    // The array identifier is named after the bucket for uniqueness. This uses a digest of the bucket name since bucket names
-    // can contain characters that are not legal in bash identifiers.
-    val arrayIdentifier = "localize_directories_" + DigestUtils.md5Hex(bucket).take(7)
-    s"""
-       |# $bucket
-       |$arrayIdentifier=(
-       |  "localize"     # direction
-       |  "directories"  # files or directories
-       |  "$project"       # project
-       |  "$maxAttempts"   # max attempts
-       |  $cloudAndContainerPaths
-       |)
-       |
-       |transfer "$${$arrayIdentifier[@]}"
-      """.stripMargin
-  }
-
-  private def fileDelocalizationTransferBundle(localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: List[PipelinesApiFileOutput]): String = {
+  private def delocalizationTransferBundle[T <: PipelinesApiOutput](localizationConfiguration: LocalizationConfiguration, files: Boolean)(bucket: String, outputs: List[T]): String = {
+    // `.head` is safe as there is always at least one output or this method wouldn't be invoked for the specified bucket.
     val project = outputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
     val cloudAndContainerPaths = outputs.flatMap { o => List(o.cloudPath, o.containerPath, o.contentType.getOrElse("")) } mkString("\"", "\"\n|  \"", "\"")
 
+    val filesOrDirectories = if (files) "files" else "directories"
+
     // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
-    val arrayIdentifier = "delocalize_files_" + DigestUtils.md5Hex(bucket).take(7)
+    val arrayIdentifier = s"delocalize_${filesOrDirectories}_" + DigestUtils.md5Hex(bucket).take(7)
     s"""
        |# $bucket
        |$arrayIdentifier=(
        |  "delocalize" # direction
-       |  "files"      # files or directories
-       |  "$project"       # project
-       |  "$maxAttempts"   # max attempts
-       |  $cloudAndContainerPaths
-       |)
-       |
-       |transfer "$${$arrayIdentifier[@]}"
-      """.stripMargin
-  }
-
-  private def directoryDelocalizationTransferBundle(localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: List[PipelinesApiDirectoryOutput]): String = {
-    val project = outputs.head.cloudPath.asInstanceOf[GcsPath].projectId
-    val maxAttempts = localizationConfiguration.localizationAttempts
-    val cloudAndContainerPaths = outputs.flatMap { o => List(o.cloudPath, o.containerPath, o.contentType.getOrElse("")) } mkString("\"", "\"\n|  \"", "\"")
-
-    // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
-    val arrayIdentifier = "delocalize_directories_" + DigestUtils.md5Hex(bucket).take(7)
-    s"""
-       |# $bucket
-       |$arrayIdentifier=(
-       |  "delocalize"  # direction
-       |  "directories" # files or directories
+       |  "$filesOrDirectories"      # files or directories
        |  "$project"       # project
        |  "$maxAttempts"   # max attempts
        |  $cloudAndContainerPaths
@@ -137,23 +100,21 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   }
 
   private def generateLocalizationScript(inputs: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
-    // KISS for now and keep files and directories separate, "fix" that later, maybe.
     val fileInputs: List[PipelinesApiFileInput] = inputs collect { case i: PipelinesApiFileInput => i }
     val directoryInputs: List[PipelinesApiDirectoryInput] = inputs collect { case i: PipelinesApiDirectoryInput => i }
 
-    val fileLocalizationBundles = groupParametersByBucket(fileInputs).toList map (fileLocalizationTransferBundle(localizationConfiguration) _).tupled mkString "\n"
-    val directoryLocalizationBundles = groupParametersByBucket(directoryInputs).toList map (directoryLocalizationTransferBundle(localizationConfiguration) _).tupled mkString "\n"
+    val fileLocalizationBundles = groupParametersByBucket(fileInputs).toList map (localizationTransferBundle(localizationConfiguration, files = true) _).tupled mkString "\n"
+    val directoryLocalizationBundles = groupParametersByBucket(directoryInputs).toList map (localizationTransferBundle(localizationConfiguration, files = false) _).tupled mkString "\n"
     transferScriptTemplate + fileLocalizationBundles + directoryLocalizationBundles
   }
 
 
   private def generateDelocalizationScript(outputs: List[PipelinesApiOutput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
-    // KISS for now and keep files and directories separate, "fix" that later, maybe.
     val fileOutputs: List[PipelinesApiFileOutput] = outputs collect { case i: PipelinesApiFileOutput => i }
     val directoryOutputs: List[PipelinesApiDirectoryOutput] = outputs collect { case i: PipelinesApiDirectoryOutput => i }
 
-    val fileLocalizationBundles = groupParametersByBucket(fileOutputs).toList map (fileDelocalizationTransferBundle(localizationConfiguration) _).tupled mkString "\n"
-    val directoryLocalizationBundles = groupParametersByBucket(directoryOutputs).toList map (directoryDelocalizationTransferBundle(localizationConfiguration) _).tupled mkString "\n"
+    val fileLocalizationBundles = groupParametersByBucket(fileOutputs).toList map (delocalizationTransferBundle(localizationConfiguration, files = true) _).tupled mkString "\n"
+    val directoryLocalizationBundles = groupParametersByBucket(directoryOutputs).toList map (delocalizationTransferBundle(localizationConfiguration, files = false) _).tupled mkString "\n"
     transferScriptTemplate + fileLocalizationBundles + directoryLocalizationBundles
   }
 
