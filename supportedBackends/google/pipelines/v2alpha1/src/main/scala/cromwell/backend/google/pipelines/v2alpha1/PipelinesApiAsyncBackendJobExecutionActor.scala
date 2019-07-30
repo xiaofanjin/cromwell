@@ -84,13 +84,16 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
     val maxAttempts = localizationConfiguration.localizationAttempts
 
     val transferItems = outputs.flatMap { output =>
-      val (optional, kind) = output match {
+      val (isOptional, kind) = output match {
         case o: PipelinesApiFileOutput if o.secondary => (true, "file_or_directory") // don't know if it's a file or directory but it's def optional
         case o: PipelinesApiFileOutput => (o.optional, "file")           // a primary file
         case o: PipelinesApiDirectoryOutput => (o.optional, "directory") // a primary directory
       }
 
-      List(kind, if (optional) "optional" else "required", output.contentType.getOrElse(""), output.cloudPath, output.containerPath)
+      val optional = if (isOptional) "optional" else "required"
+      val contentType = output.contentType.getOrElse("")
+
+      List(kind, optional, contentType, output.cloudPath, output.containerPath)
     } mkString("\"", "\"\n|  \"", "\"")
 
 

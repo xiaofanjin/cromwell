@@ -121,14 +121,9 @@ trait PipelinesParameterConversions {
       val copyCommand = if (fileOutput.optional || fileOutput.secondary) copyOnlyIfExists else copy
 
       val labels = ActionBuilder.parameterLabels(fileOutput)
-      val describeAction = ActionBuilder.describeParameter(fileOutput, labels)
 
-      val delocalizationAction = cloudSdkShellAction(
-        copyCommand
-      )(mounts = mounts, flags = List(ActionFlag.AlwaysRun), labels = labels)
-
-      // If the file should be uploaded periodically, create 2 actions, a background one with periodic upload, and a normal one
-      // that will run at the end and make sure we get the most up to date version of the file
+      // If the file should be uploaded periodically, create a background Action with periodic upload. The final
+      // delocalization will be handled by the separate delocalization script.
       fileOutput.uploadPeriod match {
         case Some(period) =>
           val periodicLabels = labels collect {
@@ -139,8 +134,8 @@ trait PipelinesParameterConversions {
             every(period) { copyCommand }
           )(mounts = mounts, flags = List(ActionFlag.RunInBackground), labels = periodicLabels)
 
-          List(describeAction, delocalizationAction, periodic)
-        case None => List(describeAction, delocalizationAction)
+          List(periodic)
+        case None => Nil
       }
     }
   }

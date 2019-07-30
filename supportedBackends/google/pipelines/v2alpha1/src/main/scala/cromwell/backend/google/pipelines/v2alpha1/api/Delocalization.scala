@@ -6,6 +6,7 @@ import akka.http.scaladsl.model.ContentTypes
 import com.google.api.services.genomics.v2alpha1.model.{Action, Mount}
 import common.util.StringUtil._
 import cromwell.backend.google.pipelines.common.PipelinesApiConfigurationAttributes.LocalizationConfiguration
+import cromwell.backend.google.pipelines.common.PipelinesApiJobPaths.DelocalizationScriptName
 import cromwell.backend.google.pipelines.common.api.PipelinesApiRequestFactory.CreatePipelineParameters
 import cromwell.backend.google.pipelines.v2alpha1.PipelinesConversions._
 import cromwell.backend.google.pipelines.v2alpha1.RuntimeOutputMapping
@@ -130,8 +131,14 @@ trait Delocalization {
       )
     }
 
+    val delocalizationContainerPath = createPipelineParameters.commandScriptContainerPath.sibling(DelocalizationScriptName)
+
+    val runDelocalizationScript: Action = cloudSdkShellAction(
+      s"/bin/bash $delocalizationContainerPath")(mounts = mounts)
+
     ActionBuilder.annotateTimestampedActions("delocalization", Value.Delocalization)(
-      createPipelineParameters.outputParameters.flatMap(_.toActions(mounts).toList) ++
+      runDelocalizationScript ::
+        createPipelineParameters.outputParameters.flatMap(_.toActions(mounts).toList) ++
         runtimeExtractionActions
     ) :+
       copyAggregatedLogToLegacyPath(callExecutionContainerRoot, gcsLegacyLogPath) :+

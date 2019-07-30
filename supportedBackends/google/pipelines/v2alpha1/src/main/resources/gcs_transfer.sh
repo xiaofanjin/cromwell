@@ -34,22 +34,63 @@ delocalize_file() {
   local cloud="$1"
   local container="$2"
   local rpflag="$3"
-  local content="$4"
+  local required="$4"
+  local content="$5"
 
   local content_flag=$(gsutil_content_flag ${content})
+
+  if [[ "$required" = "required" && -f "$container" ]]; then
   # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
-  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} cp "$container" "$cloud" > "$gsutil_log" 2>&1
+    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} cp "$container" "$cloud" > "$gsutil_log" 2>&1
+  elif [[ "$required" = "required" && -e "$container" ]]; then
+    echo "Required file output '$container' exists but is not a file"
+    # Don't know about this exit, should probably soldier on
+    # exit 1
+  elif [[ "$required" = "required" ]]; then
+    echo "Required file output '$container' does not exist."
+    # Don't know about this exit, should probably soldier on
+    # exit 1
+  fi
 }
 
 delocalize_directory() {
   local cloud="$1"
   local container="$2"
   local rpflag="$3"
-  local content="$4"
+  local required="$4"
+  local content="$5"
 
   local content_flag=$(gsutil_content_flag ${content})
-  # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
-  rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
+  if [[ "$required" = "required" && -d "$container" ]]; then
+    # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
+    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
+  elif [[ "$required" = "required" && -e "$container" ]]; then
+    echo "Required directory output '$container' exists but is not a directory"
+    # Don't know about this exit, should probably soldier on
+    # exit 1
+  elif [[ "$required" = "required" ]]; then
+    echo "Required directory output '$container' does not exist."
+    # Don't know about this exit, should probably soldier on
+    # exit 1
+  fi
+}
+
+delocalize_file_or_directory() {
+  local cloud="$1"
+  local container="$2"
+  local rpflag="$3"
+  local required="$4"
+  local content="$5"
+
+  # required must be optional for 'file_or_directory' and was checked in the caller
+  if [[ -f "$container" ]]; then
+    delocalize_file "$cloud" "$container" "$rpflag" "$required" "$content"
+  elif [[ -d "$container" ]]; then
+    delocalize_directory "$cloud" "$container" "$rpflag" "$required" "$content"
+  elif [[ -e "$container" ]]; then
+    echo "'file_or_directory' output '$container' exists but is neither a file nor a directory"
+    exit 1
+  fi
 }
 
 timestamped_message() {
@@ -102,16 +143,27 @@ transfer() {
       transfer_fn_name="${direction}_file"
     elif [[ "$file_or_directory" = "directory" ]]; then
       transfer_fn_name="${direction}_directory"
+    elif [[ "$direction" = "delocalize" && "$file_or_directory" = "file_or_directory" ]]; then
+      transfer_fn_name ="delocalize_file_or_directory"
     else
-      echo "file_or_directory must be 'file' or 'directory' but got '$file_or_directory'"
+      echo "file_or_directory must be 'file' or 'directory' or (for delocalization only) 'file_or_directory' but got '$file_or_directory' with direction = '$direction'"
       exit 1
     fi
 
     content_type=""
+    required=""
     if [[ "${direction}" = "delocalize" ]]; then
-      # Content type only appears in delocalization bundles.
-      content_type="$4"
-      shift # content_type
+      # 'required' and 'content type' only appear in delocalization bundles.
+      required="$4"
+      content_type="$5"
+      if [[ "$required" != "required" && "$required" != "optional" ]]; then
+        echo "'required' must be 'required' or 'optional' but got '$required'"
+        exit 1
+      elif [[ "$required" = "required" && "$file_or_directory" = "file_or_directory" ]]; then
+        echo "Invalid combination of required = required and file_or_directory = file_or_directory, file_or_directory only valid with optional secondary outputs"
+        exit 1
+      fi
+      shift; shift # required; content_type
     fi
     shift; shift; shift # file_or_directory; cloud; container
 
@@ -129,15 +181,15 @@ transfer() {
         rpflag=""
       fi
 
-      # Note the localization versions of transfer functions are passed a content_type parameter they will not use.
-      ${transfer_fn_name} "$cloud" "$container" "$rpflag" "$content_type"
+      # Note the localization versions of transfer functions are passed "required" and "content_type" parameters they will not use.
+      ${transfer_fn_name} "$cloud" "$container" "$rpflag" "$required" "$content_type"
       transfer_rc=$?
 
       if [[ ${transfer_rc} = 0 ]]; then
         rp_status_certain=true
         break
       else
-        timestamped_message "${transfer_fn_name} \"$cloud\" \"$container\" \"$rpflag\" \"$content_type\" failed"
+        timestamped_message "${transfer_fn_name} \"$cloud\" \"$container\" \"$rpflag\" \"$required\" \"$content_type\" failed"
 
         # Print the reason of the failure.
         cat "${gsutil_log}"
