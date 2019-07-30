@@ -51,7 +51,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   private lazy val transferScriptTemplate =
     Source.fromInputStream(Thread.currentThread.getContextClassLoader.getResourceAsStream("gcs_transfer.sh")).mkString
 
-  private def localizationTransferBundle[T <: PipelinesApiInput](localizationConfiguration: LocalizationConfiguration)(bucket: String, inputs: List[T]): String = {
+  private def gcsLocalizationTransferBundle[T <: PipelinesApiInput](localizationConfiguration: LocalizationConfiguration)(bucket: String, inputs: List[T]): String = {
     // `.head` is safe as there is always at least one input or this method wouldn't be invoked for the specified bucket.
     val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
@@ -78,7 +78,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
       """.stripMargin
   }
 
-  private def delocalizationTransferBundle[T <: PipelinesApiOutput](localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: List[T]): String = {
+  private def gcsDelocalizationTransferBundle[T <: PipelinesApiOutput](localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: List[T]): String = {
     // `.head` is safe as there is always at least one output or this method wouldn't be invoked for the specified bucket.
     val project = outputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
@@ -111,43 +111,39 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
 
   private def generateLocalizationScript(inputs: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
     val fileAndDirectoryInputs = inputs collect {
-      case i: PipelinesApiFileInput => i
-      case i: PipelinesApiDirectoryInput => i
+      // Only GCS inputs are currently being localized by the localization script. There will always be at least one GCS input
+      // parameter in the form of the command script.
+      case i @ (_: PipelinesApiFileInput | _: PipelinesApiDirectoryInput) if i.cloudPath.isInstanceOf[GcsPath] => i
     }
 
-    val bundleFunction = (localizationTransferBundle(localizationConfiguration) _).tupled
-    val localizationBundles = groupParametersByBucket(fileAndDirectoryInputs) map bundleFunction mkString "\n"
+    val bundleFunction = (gcsLocalizationTransferBundle(localizationConfiguration) _).tupled
+    val localizationBundles = groupParametersByGcsBucket(fileAndDirectoryInputs) map bundleFunction mkString "\n"
 
     transferScriptTemplate + localizationBundles
   }
 
   private def generateDelocalizationScript(outputs: List[PipelinesApiOutput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
     val fileAndDirectoryOutputs = outputs collect {
-      case o: PipelinesApiFileOutput => o
-      case o: PipelinesApiDirectoryOutput => o
+      // Only GCS outputs are currently being delocalized by the delocalization script. There will always be GCS output
+      // parameters in the form of output detritus.
+      case o @ (_: PipelinesApiFileOutput | _: PipelinesApiDirectoryOutput) if o.cloudPath.isInstanceOf[GcsPath] => o
     }
 
-    val bundleFunction = (delocalizationTransferBundle(localizationConfiguration) _).tupled
-    val localizationBundles = groupParametersByBucket(fileAndDirectoryOutputs) map bundleFunction mkString "\n"
+    val bundleFunction = (gcsDelocalizationTransferBundle(localizationConfiguration) _).tupled
+    val localizationBundles = groupParametersByGcsBucket(fileAndDirectoryOutputs) map bundleFunction mkString "\n"
 
     transferScriptTemplate + localizationBundles
   }
 
   override def uploadLocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
     val mounts = PipelinesConversions.toMounts(createPipelineParameters)
-    // Only GCS inputs are currently being localized by the localization script. There will always be at least one GCS input
-    // parameter in the form of the command script.
-    val gcsInputs = createPipelineParameters.inputOutputParameters.fileInputParameters.filter { _.cloudPath.isInstanceOf[GcsPath] }
-    val content = generateLocalizationScript(gcsInputs, mounts)(localizationConfiguration)
+    val content = generateLocalizationScript(createPipelineParameters.inputOutputParameters.fileInputParameters, mounts)(localizationConfiguration)
     asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
   }
 
   override def uploadDelocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
     val mounts = PipelinesConversions.toMounts(createPipelineParameters)
-    // Only GCS outputs are currently being localized by the localization script. There will always be GCS output
-    // parameters in the form of output detritus.
-    val gcsOutputs = createPipelineParameters.inputOutputParameters.fileOutputParameters.filter { _.cloudPath.isInstanceOf[GcsPath] }
-    val content = generateDelocalizationScript(gcsOutputs, mounts)(localizationConfiguration)
+    val content = generateDelocalizationScript(createPipelineParameters.inputOutputParameters.fileOutputParameters, mounts)(localizationConfiguration)
     asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
   }
 
@@ -196,12 +192,12 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
             * call-A/file.txt
             *
             * This code is called as part of a path mapper that will be applied to the WOMified cwl.output.json.
-            * The cwl.output.json when it's being read by Cromwell from the bucket still contains local paths 
+            * The cwl.output.json when it's being read by Cromwell from the bucket still contains local paths
             * (as they were created by the cwl tool).
             * In order to keep things working we need to map those local paths to where they were actually delocalized,
             * which is determined in cromwell.backend.google.pipelines.v2alpha1.api.Delocalization.
             */
-          case _ => (callRootPath / 
+          case _ => (callRootPath /
             RuntimeOutputMapping
                 .prefixFilters(workflowPaths.workflowRoot)
                 .foldLeft(path)({
@@ -253,7 +249,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
 object PipelinesApiAsyncBackendJobExecutionActor {
   private val gcsPathMatcher = "^gs://?([^/]+)/.*".r
 
-  private [v2alpha1] def groupParametersByBucket[T <: PipelinesParameter](parameters: List[T]): Map[String, List[T]] = {
+  private [v2alpha1] def groupParametersByGcsBucket[T <: PipelinesParameter](parameters: List[T]): Map[String, List[T]] = {
     parameters.foldRight(Map[String, List[T]]().withDefault(_ => List.empty)) { case (p, acc) =>
       p.cloudPath.toString match {
         case gcsPathMatcher(bucket) =>

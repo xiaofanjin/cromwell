@@ -34,6 +34,6 @@ class PipelinesApiAsyncBackendJobExecutionActorSpec extends FlatSpec with Matche
       Map("bar" -> (List(2, 3, 4) map inputs.apply)) ++
       Map("baz" -> List(inputs(5)))
 
-    PipelinesApiAsyncBackendJobExecutionActor.groupParametersByBucket(inputs) shouldEqual expected
+    PipelinesApiAsyncBackendJobExecutionActor.groupParametersByGcsBucket(inputs) shouldEqual expected
   }
 }
