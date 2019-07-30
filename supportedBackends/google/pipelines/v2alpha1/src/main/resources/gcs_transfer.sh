@@ -1,3 +1,4 @@
+#!/bin/bash
 # The `papi_v2_log` Centaur test is opinionated about the number of log messages around localization/delocalization.
 # The trace logging of `set -x` must be turned off for the `papi_v2_log` test to pass.
 set +x
@@ -21,15 +22,6 @@ localize_directory() {
   mkdir -p "${container}" && rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m rsync -r "${cloud}" "${container}" > "$gsutil_log" 2>&1
 }
 
-# Content type is sometimes (not always) specified for delocalizations.
-gsutil_content_flag() {
-  local content="$1"
-
-  if [[ ! -z "${content}" ]]; then
-    echo -n -- "-h 'Content-Type: $content'"
-  fi
-}
-
 delocalize_file() {
   local cloud="$1"
   local container="$2"
@@ -37,11 +29,10 @@ delocalize_file() {
   local required="$4"
   local content="$5"
 
-  local content_flag=$(gsutil_content_flag ${content})
-
-  if [[ "$required" = "required" && -f "$container" ]]; then
-  # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
-    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} cp "$container" "$cloud" > "$gsutil_log" 2>&1
+  if [[ "$required" = "required" && -f "$container" && -n "$content" ]]; then
+    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m -h "Content-Type: $content" cp "$container" "$cloud" > "$gsutil_log" 2>&1
+  elif [[ "$required" = "required" && -f "$container" ]]; then
+    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m cp "$container" "$cloud" > "$gsutil_log" 2>&1
   elif [[ "$required" = "required" && -e "$container" ]]; then
     echo "Required file output '$container' exists but is not a file"
     # Don't know about this exit, should probably soldier on
@@ -60,10 +51,10 @@ delocalize_directory() {
   local required="$4"
   local content="$5"
 
-  local content_flag=$(gsutil_content_flag ${content})
-  if [[ "$required" = "required" && -d "$container" ]]; then
-    # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
-    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
+  if [[ "$required" = "required" && -d "$container" && -n "$content" ]]; then
+    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m -h "Content-Type: $content" rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
+  elif [[ "$required" = "required" && -d "$container" ]]; then
+    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
   elif [[ "$required" = "required" && -e "$container" ]]; then
     echo "Required directory output '$container' exists but is not a directory"
     # Don't know about this exit, should probably soldier on
@@ -129,9 +120,6 @@ transfer() {
   local use_requester_pays=false
 
   local message_fn="${direction}_message"
-
-  # One race-condition sidestepping sleep 5 to rule them all.
-  sleep 5
 
   # Loop while there are still items in the bundle to transfer.
   while [[ $# -gt 0 ]]; do

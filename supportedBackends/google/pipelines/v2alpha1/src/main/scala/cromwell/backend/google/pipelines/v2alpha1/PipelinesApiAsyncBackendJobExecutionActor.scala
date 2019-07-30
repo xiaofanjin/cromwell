@@ -1,5 +1,6 @@
 package cromwell.backend.google.pipelines.v2alpha1
 
+import cats.data.NonEmptyList
 import com.google.api.services.genomics.v2alpha1.model.Mount
 import com.google.cloud.storage.contrib.nio.CloudStorageOptions
 import cromwell.backend.BackendJobDescriptor
@@ -51,11 +52,11 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   private lazy val transferScriptTemplate =
     Source.fromInputStream(Thread.currentThread.getContextClassLoader.getResourceAsStream("gcs_transfer.sh")).mkString
 
-  private def gcsLocalizationTransferBundle[T <: PipelinesApiInput](localizationConfiguration: LocalizationConfiguration)(bucket: String, inputs: List[T]): String = {
+  private def gcsLocalizationTransferBundle[T <: PipelinesApiInput](localizationConfiguration: LocalizationConfiguration)(bucket: String, inputs: NonEmptyList[T]): String = {
     // `.head` is safe as there is always at least one input or this method wouldn't be invoked for the specified bucket.
     val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
-    val transferItems = inputs.flatMap { i =>
+    val transferItems = inputs.toList.flatMap { i =>
       val kind = i match {
         case _: PipelinesApiFileInput => "file"
         case _: PipelinesApiDirectoryInput => "directory"
@@ -78,12 +79,12 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
       """.stripMargin
   }
 
-  private def gcsDelocalizationTransferBundle[T <: PipelinesApiOutput](localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: List[T]): String = {
+  private def gcsDelocalizationTransferBundle[T <: PipelinesApiOutput](localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: NonEmptyList[T]): String = {
     // `.head` is safe as there is always at least one output or this method wouldn't be invoked for the specified bucket.
     val project = outputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
 
-    val transferItems = outputs.flatMap { output =>
+    val transferItems = outputs.toList.flatMap { output =>
       val (isOptional, kind) = output match {
         case o: PipelinesApiFileOutput if o.secondary => (true, "file_or_directory") // don't know if it's a file or directory but it's def optional
         case o: PipelinesApiFileOutput => (o.optional, "file")           // a primary file
@@ -93,7 +94,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
       val optional = if (isOptional) "optional" else "required"
       val contentType = output.contentType.getOrElse("")
 
-      List(kind, optional, contentType, output.cloudPath, output.containerPath)
+      List(kind, output.cloudPath, output.containerPath, optional, contentType)
     } mkString("\"", "\"\n|  \"", "\"")
 
 
@@ -252,11 +253,14 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
 object PipelinesApiAsyncBackendJobExecutionActor {
   private val gcsPathMatcher = "^gs://?([^/]+)/.*".r
 
-  private [v2alpha1] def groupParametersByGcsBucket[T <: PipelinesParameter](parameters: List[T]): Map[String, List[T]] = {
-    parameters.foldRight(Map[String, List[T]]().withDefault(_ => List.empty)) { case (p, acc) =>
+  private [v2alpha1] def groupParametersByGcsBucket[T <: PipelinesParameter](parameters: List[T]): Map[String, NonEmptyList[T]] = {
+    parameters.foldRight(Map[String, NonEmptyList[T]]()) { case (p, acc) =>
       p.cloudPath.toString match {
         case gcsPathMatcher(bucket) =>
-          acc + (bucket -> (p :: acc(bucket)))
+          val v = if (!acc.contains(bucket)) NonEmptyList.of(p) else p :: acc(bucket)
+          acc + (bucket -> v)
+        case other =>
+          throw new RuntimeException(s"Programmer error: Path '$other' did not match the expected regex. This should have been impossible")
       }
     }
   }

@@ -2,6 +2,7 @@ package cromwell.backend.google.pipelines.v2alpha1
 
 import java.nio.file.Paths
 
+import cats.data.NonEmptyList
 import cromwell.backend.google.pipelines.common.PipelinesApiFileInput
 import cromwell.core.path.DefaultPathBuilder
 import org.scalatest.{FlatSpec, Matchers}
@@ -30,9 +31,9 @@ class PipelinesApiAsyncBackendJobExecutionActorSpec extends FlatSpec with Matche
     ) map (makeInput _).tupled.apply
 
     val expected =
-      Map("foo" -> (List(0, 1) map inputs.apply)) ++
-      Map("bar" -> (List(2, 3, 4) map inputs.apply)) ++
-      Map("baz" -> List(inputs(5)))
+      Map("foo" -> (NonEmptyList.of(0, 1) map inputs.apply)) ++
+      Map("bar" -> (NonEmptyList.of(2, 3, 4) map inputs.apply)) ++
+      Map("baz" -> NonEmptyList.of(inputs(5)))
 
     PipelinesApiAsyncBackendJobExecutionActor.groupParametersByGcsBucket(inputs) shouldEqual expected
   }
