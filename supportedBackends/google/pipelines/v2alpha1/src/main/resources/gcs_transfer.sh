@@ -36,7 +36,7 @@ delocalize_file() {
   local rpflag="$3"
   local content="$4"
 
-  local content_flag=$(gsutil_content_flag $content)
+  local content_flag=$(gsutil_content_flag ${content})
   # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
   rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} cp "$container" "$cloud" > "$gsutil_log" 2>&1
 }
@@ -47,7 +47,7 @@ delocalize_directory() {
   local rpflag="$3"
   local content="$4"
 
-  local content_flag=$(gsutil_content_flag $content)
+  local content_flag=$(gsutil_content_flag ${content})
   # Do not quote rpflag or content_flag, when those are set they will be two distinct arguments each.
   rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m ${content_flag} rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
 }
@@ -70,27 +70,16 @@ delocalize_message() {
   timestamped_message "${message}"
 }
 
-# Transfer a bundle of files xor directories to or from the same GCS bucket.
+# Transfer a bundle of files or directories to or from the same GCS bucket.
 transfer() {
   local direction="$1"
-  local files_or_directories="$2"
-  local project="$3"
-  local max_attempts="$4"
+  local project="$2"
+  local max_attempts="$3"
 
-  shift; shift; shift; shift # direction; files_or_directories; project; max_attempts
+  shift; shift; shift # direction; project; max_attempts
 
   if [[ "$direction" != "localize" && "$direction" != "delocalize" ]]; then
     echo "direction must be 'localize' or 'delocalize' but got '$direction'"
-    exit 1
-  fi
-
-  transfer_fn_name=""
-  if [[ "$files_or_directories" = "files" ]]; then
-    transfer_fn_name="${direction}_file"
-  elif [[ "$files_or_directories" = "directories" ]]; then
-    transfer_fn_name="${direction}_directory"
-  else
-    echo "files_or_directories must be 'files' or 'directories' but got '$files_or_directories'"
     exit 1
   fi
 
@@ -103,18 +92,28 @@ transfer() {
   # One race-condition sidestepping sleep 5 to rule them all.
   sleep 5
 
-  # Loop while there are still files or directories in the bundle to transfer.
+  # Loop while there are still items in the bundle to transfer.
   while [[ $# -gt 0 ]]; do
-    cloud="$1"
-    container="$2"
+    file_or_directory="$1"
+    cloud="$2"
+    container="$3"
+
+    if [[ "$file_or_directory" = "file" ]]; then
+      transfer_fn_name="${direction}_file"
+    elif [[ "$file_or_directory" = "directory" ]]; then
+      transfer_fn_name="${direction}_directory"
+    else
+      echo "file_or_directory must be 'file' or 'directory' but got '$file_or_directory'"
+      exit 1
+    fi
 
     content_type=""
     if [[ "${direction}" = "delocalize" ]]; then
       # Content type only appears in delocalization bundles.
-      content_type="$3"
+      content_type="$4"
       shift # content_type
     fi
-    shift; shift # cloud; container
+    shift; shift; shift # file_or_directory; cloud; container
 
     # Log what is being localized or delocalized (at least one test depends on this).
     ${message_fn} "$cloud" "$container"

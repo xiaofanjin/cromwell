@@ -49,26 +49,29 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   }
 
   private lazy val transferScriptTemplate =
-    Source.fromInputStream(Thread.currentThread.getContextClassLoader.getResourceAsStream("transfer.sh")).mkString
+    Source.fromInputStream(Thread.currentThread.getContextClassLoader.getResourceAsStream("gcs_transfer.sh")).mkString
 
-  private def localizationTransferBundle[T <: PipelinesApiInput](localizationConfiguration: LocalizationConfiguration, files: Boolean)(bucket: String, inputs: List[T]): String = {
+  private def localizationTransferBundle[T <: PipelinesApiInput](localizationConfiguration: LocalizationConfiguration)(bucket: String, inputs: List[T]): String = {
     // `.head` is safe as there is always at least one input or this method wouldn't be invoked for the specified bucket.
     val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
-    val cloudAndContainerPaths = inputs.flatMap { i => List(i.cloudPath, i.containerPath) } mkString("\"", "\"\n|  \"", "\"")
-
-    val filesOrDirectories = if (files) "files" else "directories"
+    val transferItems = inputs.flatMap { i =>
+      val kind = i match {
+        case _: PipelinesApiFileInput => "file"
+        case _: PipelinesApiDirectoryInput => "directory"
+      }
+      List(kind, i.cloudPath, i.containerPath)
+    } mkString("\"", "\"\n|  \"", "\"")
 
     // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
-    val arrayIdentifier = s"localize_${filesOrDirectories}_" + DigestUtils.md5Hex(bucket).take(7)
+    val arrayIdentifier = s"localize_" + DigestUtils.md5Hex(bucket).take(7)
     s"""
        |# $bucket
        |$arrayIdentifier=(
        |  "localize" # direction
-       |  "$filesOrDirectories"    # files or directories
        |  "$project"       # project
        |  "$maxAttempts"   # max attempts
-       |  $cloudAndContainerPaths
+       |  $transferItems
        |)
        |
        |transfer "$${$arrayIdentifier[@]}"
@@ -100,18 +103,15 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   }
 
   private def generateLocalizationScript(inputs: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
-    // true if the collection represents files, false if directories.
-    val fileInputs = (inputs collect { case i: PipelinesApiFileInput => i }, true)
-    val directoryInputs = (inputs collect { case i: PipelinesApiDirectoryInput => i }, false)
-
-    // Make transfer bundles for files and directories separately.
-    val List(fileLocalizationBundles, directoryLocalizationBundles) = List(fileInputs, directoryInputs) map {
-      case (is, isFile) =>
-        val bundleFunction = (localizationTransferBundle(localizationConfiguration, isFile) _).tupled
-        groupParametersByBucket(is).toList map bundleFunction mkString "\n"
+    val fileAndDirectoryInputs = inputs collect {
+      case i: PipelinesApiFileInput => i
+      case i: PipelinesApiDirectoryInput => i
     }
 
-    transferScriptTemplate + fileLocalizationBundles + directoryLocalizationBundles
+    val bundleFunction = (localizationTransferBundle(localizationConfiguration) _).tupled
+    val localizationBundles = groupParametersByBucket(fileAndDirectoryInputs) map bundleFunction mkString "\n"
+
+    transferScriptTemplate + localizationBundles
   }
 
   private def generateDelocalizationScript(outputs: List[PipelinesApiOutput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
