@@ -132,7 +132,7 @@ transfer() {
     elif [[ "$file_or_directory" = "directory" ]]; then
       transfer_fn_name="${direction}_directory"
     elif [[ "$direction" = "delocalize" && "$file_or_directory" = "file_or_directory" ]]; then
-      transfer_fn_name ="delocalize_file_or_directory"
+      transfer_fn_name="delocalize_file_or_directory"
     else
       echo "file_or_directory must be 'file' or 'directory' or (for delocalization only) 'file_or_directory' but got '$file_or_directory' with direction = '$direction'"
       exit 1
