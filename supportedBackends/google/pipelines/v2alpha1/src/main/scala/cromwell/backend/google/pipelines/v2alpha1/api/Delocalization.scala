@@ -133,8 +133,9 @@ trait Delocalization {
 
     val delocalizationContainerPath = createPipelineParameters.commandScriptContainerPath.sibling(DelocalizationScriptName)
 
+    val delocalizationLabel = Map(Key.Tag -> Value.Delocalization)
     val runDelocalizationScript: Action = cloudSdkShellAction(
-      s"/bin/bash $delocalizationContainerPath")(mounts = mounts)
+      s"/bin/bash $delocalizationContainerPath")(mounts = mounts, labels = delocalizationLabel)
 
     ActionBuilder.annotateTimestampedActions("delocalization", Value.Delocalization)(
       runDelocalizationScript ::
