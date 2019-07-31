@@ -35,12 +35,12 @@ delocalize_file() {
     rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m cp "$container" "$cloud" > "$gsutil_log" 2>&1
   elif [[ "$required" = "required" && -e "$container" ]]; then
     echo "Required file output '$container' exists but is not a file"
-    # Don't know about this exit, should probably soldier on
-    # exit 1
+    # Don't know about this exit, should this soldier on?
+    exit 1
   elif [[ "$required" = "required" ]]; then
     echo "Required file output '$container' does not exist."
-    # Don't know about this exit, should probably soldier on
-    # exit 1
+    # Don't know about this exit, should this soldier on?
+    exit 1
   fi
 }
 
@@ -57,12 +57,12 @@ delocalize_directory() {
     rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
   elif [[ "$required" = "required" && -e "$container" ]]; then
     echo "Required directory output '$container' exists but is not a directory"
-    # Don't know about this exit, should probably soldier on
-    # exit 1
+    # Don't know about this exit, should this soldier on?
+    exit 1
   elif [[ "$required" = "required" ]]; then
     echo "Required directory output '$container' does not exist."
-    # Don't know about this exit, should probably soldier on
-    # exit 1
+    # Don't know about this exit, should this soldier on?
+    exit 1
   fi
 }
 
