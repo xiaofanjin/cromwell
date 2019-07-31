@@ -29,12 +29,12 @@ delocalize_file() {
   local required="$4"
   local content="$5"
 
-  if [[ "$required" = "required" && -f "$container" && -n "$content" ]]; then
+  if [[ -f "$container" && -n "$content" ]]; then
     rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m -h "Content-Type: $content" cp "$container" "$cloud" > "$gsutil_log" 2>&1
-  elif [[ "$required" = "required" && -f "$container" ]]; then
+  elif [[ -f "$container" ]]; then
     rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m cp "$container" "$cloud" > "$gsutil_log" 2>&1
-  elif [[ "$required" = "required" && -e "$container" ]]; then
-    echo "Required file output '$container' exists but is not a file"
+  elif [[ -e "$container" ]]; then
+    echo "File output '$container' exists but is not a file"
     # Don't know about this exit, should this soldier on?
     exit 1
   elif [[ "$required" = "required" ]]; then
@@ -51,12 +51,12 @@ delocalize_directory() {
   local required="$4"
   local content="$5"
 
-  if [[ "$required" = "required" && -d "$container" && -n "$content" ]]; then
+  if [[ -d "$container" && -n "$content" ]]; then
     rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m -h "Content-Type: $content" rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
-  elif [[ "$required" = "required" && -d "$container" ]]; then
+  elif [[ -d "$container" ]]; then
     rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
-  elif [[ "$required" = "required" && -e "$container" ]]; then
-    echo "Required directory output '$container' exists but is not a directory"
+  elif [[ -e "$container" ]]; then
+    echo "Directory output '$container' exists but is not a directory"
     # Don't know about this exit, should this soldier on?
     exit 1
   elif [[ "$required" = "required" ]]; then
