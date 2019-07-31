@@ -53,7 +53,6 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
     Source.fromInputStream(Thread.currentThread.getContextClassLoader.getResourceAsStream("gcs_transfer.sh")).mkString
 
   private def gcsLocalizationTransferBundle[T <: PipelinesApiInput](localizationConfiguration: LocalizationConfiguration)(bucket: String, inputs: NonEmptyList[T]): String = {
-    // `.head` is safe as there is always at least one input or this method wouldn't be invoked for the specified bucket.
     val project = inputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
     val transferItems = inputs.toList.flatMap { i =>
@@ -80,18 +79,17 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   }
 
   private def gcsDelocalizationTransferBundle[T <: PipelinesApiOutput](localizationConfiguration: LocalizationConfiguration)(bucket: String, outputs: NonEmptyList[T]): String = {
-    // `.head` is safe as there is always at least one output or this method wouldn't be invoked for the specified bucket.
     val project = outputs.head.cloudPath.asInstanceOf[GcsPath].projectId
     val maxAttempts = localizationConfiguration.localizationAttempts
 
     val transferItems = outputs.toList.flatMap { output =>
-      val (isOptional, kind) = output match {
-        case o: PipelinesApiFileOutput if o.secondary => (true, "file_or_directory") // don't know if it's a file or directory but it's def optional
-        case o: PipelinesApiFileOutput => (o.optional, "file")           // a primary file
-        case o: PipelinesApiDirectoryOutput => (o.optional, "directory") // a primary directory
+      val kind = output match {
+        case o: PipelinesApiFileOutput if o.secondary => "file_or_directory" // if secondary the type is unknown
+        case _: PipelinesApiFileOutput => "file" // a primary file
+        case _: PipelinesApiDirectoryOutput => "directory" // a primary directory
       }
 
-      val optional = if (isOptional) "optional" else "required"
+      val optional = Option(output) collectFirst { case o: PipelinesApiFileOutput if o.secondary || o.optional => "optional" } getOrElse "required"
       val contentType = output.contentType.getOrElse("")
 
       List(kind, output.cloudPath, output.containerPath, optional, contentType)
@@ -114,27 +112,27 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   }
 
   private def generateLocalizationScript(inputs: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
-    val fileAndDirectoryInputs = inputs collect {
+    val gcsInputs = inputs collect {
       // Only GCS inputs are currently being localized by the localization script. There will always be at least one GCS input
       // parameter in the form of the command script.
       case i @ (_: PipelinesApiFileInput | _: PipelinesApiDirectoryInput) if i.cloudPath.isInstanceOf[GcsPath] => i
     }
 
     val bundleFunction = (gcsLocalizationTransferBundle(localizationConfiguration) _).tupled
-    val localizationBundles = groupParametersByGcsBucket(fileAndDirectoryInputs) map bundleFunction mkString "\n"
+    val localizationBundles = groupParametersByGcsBucket(gcsInputs) map bundleFunction mkString "\n"
 
     transferScriptTemplate + localizationBundles
   }
 
   private def generateDelocalizationScript(outputs: List[PipelinesApiOutput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
-    val fileAndDirectoryOutputs = outputs collect {
+    val gcsOutputs = outputs collect {
       // Only GCS outputs are currently being delocalized by the delocalization script. There will always be GCS output
       // parameters in the form of output detritus.
       case o @ (_: PipelinesApiFileOutput | _: PipelinesApiDirectoryOutput) if o.cloudPath.isInstanceOf[GcsPath] => o
     }
 
     val bundleFunction = (gcsDelocalizationTransferBundle(localizationConfiguration) _).tupled
-    val localizationBundles = groupParametersByGcsBucket(fileAndDirectoryOutputs) map bundleFunction mkString "\n"
+    val localizationBundles = groupParametersByGcsBucket(gcsOutputs) map bundleFunction mkString "\n"
 
     transferScriptTemplate + localizationBundles
   }
