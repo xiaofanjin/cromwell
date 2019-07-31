@@ -1,6 +1,9 @@
 package cromwell.backend.google.pipelines.v2alpha1
 
 import cats.data.NonEmptyList
+import cats.instances.list._
+import cats.instances.map._
+import cats.syntax.foldable._
 import com.google.api.services.genomics.v2alpha1.model.Mount
 import com.google.cloud.storage.contrib.nio.CloudStorageOptions
 import cromwell.backend.BackendJobDescriptor
@@ -20,6 +23,7 @@ import wom.values.{GlobFunctions, WomFile, WomGlobFile, WomMaybeListedDirectory,
 
 import scala.concurrent.Future
 import scala.io.Source
+import scala.language.postfixOps
 
 class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExecutionActorParams) extends cromwell.backend.google.pipelines.common.PipelinesApiAsyncBackendJobExecutionActor(standardParams) {
 
@@ -64,7 +68,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
     } mkString("\"", "\"\n|  \"", "\"")
 
     // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
-    val arrayIdentifier = s"localize_" + DigestUtils.md5Hex(bucket).take(7)
+    val arrayIdentifier = s"localize_" + DigestUtils.md5Hex(bucket)
     s"""
        |# $bucket
        |$arrayIdentifier=(
@@ -97,7 +101,7 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
 
 
     // Use a digest as bucket names can contain characters that are not legal in bash identifiers.
-    val arrayIdentifier = s"delocalize_" + DigestUtils.md5Hex(bucket).take(7)
+    val arrayIdentifier = s"delocalize_" + DigestUtils.md5Hex(bucket)
     s"""
        |# $bucket
        |$arrayIdentifier=(
@@ -112,28 +116,18 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
   }
 
   private def generateLocalizationScript(inputs: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
-    val gcsInputs = inputs collect {
-      // Only GCS inputs are currently being localized by the localization script. There will always be at least one GCS input
-      // parameter in the form of the command script.
-      case i @ (_: PipelinesApiFileInput | _: PipelinesApiDirectoryInput) if i.cloudPath.isInstanceOf[GcsPath] => i
-    }
-
     val bundleFunction = (gcsLocalizationTransferBundle(localizationConfiguration) _).tupled
-    val localizationBundles = groupParametersByGcsBucket(gcsInputs) map bundleFunction mkString "\n"
-
-    transferScriptTemplate + localizationBundles
+    generateTransferScript(inputs, mounts, bundleFunction)
   }
 
   private def generateDelocalizationScript(outputs: List[PipelinesApiOutput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
-    val gcsOutputs = outputs collect {
-      // Only GCS outputs are currently being delocalized by the delocalization script. There will always be GCS output
-      // parameters in the form of output detritus.
-      case o @ (_: PipelinesApiFileOutput | _: PipelinesApiDirectoryOutput) if o.cloudPath.isInstanceOf[GcsPath] => o
-    }
-
     val bundleFunction = (gcsDelocalizationTransferBundle(localizationConfiguration) _).tupled
-    val localizationBundles = groupParametersByGcsBucket(gcsOutputs) map bundleFunction mkString "\n"
+    generateTransferScript(outputs, mounts, bundleFunction)
+  }
 
+  private def generateTransferScript[T <: PipelinesParameter](items: List[T], mounts: List[Mount], bundleFunction: ((String, NonEmptyList[T])) => String): String = {
+    val gcsItems = items collect { case i if i.cloudPath.isInstanceOf[GcsPath] => i }
+    val localizationBundles = groupParametersByGcsBucket(gcsItems) map bundleFunction mkString "\n"
     transferScriptTemplate + localizationBundles
   }
 
@@ -252,14 +246,13 @@ object PipelinesApiAsyncBackendJobExecutionActor {
   private val gcsPathMatcher = "^gs://?([^/]+)/.*".r
 
   private [v2alpha1] def groupParametersByGcsBucket[T <: PipelinesParameter](parameters: List[T]): Map[String, NonEmptyList[T]] = {
-    parameters.foldRight(Map[String, NonEmptyList[T]]()) { case (p, acc) =>
-      p.cloudPath.toString match {
+    parameters.map { param =>
+      param.cloudPath.toString match {
         case gcsPathMatcher(bucket) =>
-          val v = if (!acc.contains(bucket)) NonEmptyList.of(p) else p :: acc(bucket)
-          acc + (bucket -> v)
+          Map(bucket -> NonEmptyList.of(param))
         case other =>
           throw new RuntimeException(s"Programmer error: Path '$other' did not match the expected regex. This should have been impossible")
       }
-    }
+    } combineAll
   }
 }
