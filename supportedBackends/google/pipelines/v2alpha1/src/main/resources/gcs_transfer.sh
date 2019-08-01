@@ -29,17 +29,30 @@ delocalize_file() {
   local required="$4"
   local content="$5"
 
+  # From Thibault:
+  #
+  # As per https://cloud.google.com/storage/docs/gsutil/addlhelp/HowSubdirectoriesWork, rule #2
+  # If one attempts a
+  #  gsutil cp /local/file.txt gs://bucket/subdir/file.txt
+  #  AND
+  #  there exists a folder gs://bucket/subdir/file.txt_thisCouldBeAnything
+  #  then gs://bucket/subdir/file.txt will be treated as a directory, and /local/file.txt will be copied under gs://bucket/subdir/file.txt/file.txt
+  #  and not gs://bucket/subdir/file.txt.
+  #
+  # By instead using the parent directory (and ensuring it ends with a slash), gsutil will treat that as a directory and put the file under it.
+  # So the final gsutil command will look something like gsutil cp /local/file.txt gs://bucket/subdir/
+  local cloud_parent=$(dirname "$cloud")
+  cloud_parent="${cloud_parent}/"
+
   if [[ -f "$container" && -n "$content" ]]; then
-    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m -h "Content-Type: $content" cp "$container" "$cloud" > "$gsutil_log" 2>&1
+    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m -h "Content-Type: $content" cp "$container" "$cloud_parent" > "$gsutil_log" 2>&1
   elif [[ -f "$container" ]]; then
-    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m cp "$container" "$cloud" > "$gsutil_log" 2>&1
+    rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m cp "$container" "$cloud_parent" > "$gsutil_log" 2>&1
   elif [[ -e "$container" ]]; then
     echo "File output '$container' exists but is not a file"
-    # Don't know about this exit, should this soldier on?
     exit 1
   elif [[ "$required" = "required" ]]; then
     echo "Required file output '$container' does not exist."
-    # Don't know about this exit, should this soldier on?
     exit 1
   fi
 }
@@ -57,11 +70,9 @@ delocalize_directory() {
     rm -f "$HOME/.config/gcloud/gce" && gsutil ${rpflag} -m rsync -r "$container" "$cloud" > "$gsutil_log" 2>&1
   elif [[ -e "$container" ]]; then
     echo "Directory output '$container' exists but is not a directory"
-    # Don't know about this exit, should this soldier on?
     exit 1
   elif [[ "$required" = "required" ]]; then
     echo "Required directory output '$container' does not exist."
-    # Don't know about this exit, should this soldier on?
     exit 1
   fi
 }
