@@ -230,9 +230,9 @@ object CommandOutputBinding {
       case WomMaybePopulatedFileType =>
         //TODO: HACK ALERT - DB: I am starting on ticket https://github.com/broadinstitute/cromwell/issues/3092 which will redeem me of this mortal sin.
         val detritusFiles = List(
-          "delocalization",
           "docker_cid",
-          "localization",
+          "gcs_delocalization",
+          "gcs_localization",
           "rc.tmp",
           "script",
           "script.background",

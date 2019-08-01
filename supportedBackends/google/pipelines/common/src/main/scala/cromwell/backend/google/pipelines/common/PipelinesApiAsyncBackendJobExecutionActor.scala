@@ -471,9 +471,9 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
     Future.successful(PendingExecutionHandle(jobDescriptor, jobForResumption, Option(Run(jobForResumption)), previousState = None))
   }
 
-  protected def uploadLocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = Future.successful(())
+  protected def uploadGcsLocalizationScript(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = Future.successful(())
 
-  protected def uploadDelocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = Future.successful(())
+  protected def uploadGcsDelocalizationScript(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = Future.successful(())
 
   private def createNewJob(): Future[ExecutionHandle] = {
     // Want to force runtimeAttributes to evaluate so we can fail quickly now if we need to:
@@ -526,10 +526,10 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
       jesParameters <- generateInputOutputParameters
       createParameters = createPipelineParameters(jesParameters, customLabels)
       localizationConfiguration = initializationData.papiConfiguration.papiAttributes.localizationConfiguration
-      localizationScriptCloudPath = jobPaths.callExecutionRoot / PipelinesApiJobPaths.LocalizationScriptName
-      _ <- uploadLocalizationFile(createParameters, localizationScriptCloudPath, localizationConfiguration)
-      delocalizationScriptCloudPath = jobPaths.callExecutionRoot / PipelinesApiJobPaths.DelocalizationScriptName
-      _ <- uploadDelocalizationFile(createParameters, delocalizationScriptCloudPath, localizationConfiguration)
+      gcsLocalizationScriptCloudPath = jobPaths.callExecutionRoot / PipelinesApiJobPaths.GcsLocalizationScriptName
+      _ <- uploadGcsLocalizationScript(createParameters, gcsLocalizationScriptCloudPath, localizationConfiguration)
+      gcsDelocalizationScriptCloudPath = jobPaths.callExecutionRoot / PipelinesApiJobPaths.GcsDelocalizationScriptName
+      _ <- uploadGcsDelocalizationScript(createParameters, gcsDelocalizationScriptCloudPath, localizationConfiguration)
       _ = this.hasDockerCredentials = createParameters.privateDockerKeyAndEncryptedToken.isDefined
       runId <- runPipeline(workflowId, createParameters, jobLogger)
       _ = sendGoogleLabelsToMetadata(customLabels)

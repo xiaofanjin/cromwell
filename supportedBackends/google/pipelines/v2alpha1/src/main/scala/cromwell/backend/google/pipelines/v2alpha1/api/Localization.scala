@@ -15,23 +15,23 @@ trait Localization {
   def localizeActions(createPipelineParameters: CreatePipelineParameters, mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration) = {
     val localizationLabel = Map(Key.Tag -> Value.Localization)
 
-    val localizationContainerPath = createPipelineParameters.commandScriptContainerPath.sibling(LocalizationScriptName)
-    val localizeLocalizationScript = cloudSdkShellAction(localizeFile(
-      cloudPath = createPipelineParameters.cloudCallRoot / LocalizationScriptName,
-      containerPath = localizationContainerPath))(mounts = mounts, labels = localizationLabel)
+    val gcsLocalizationContainerPath = createPipelineParameters.commandScriptContainerPath.sibling(GcsLocalizationScriptName)
+    val localizeGcsLocalizationScript = cloudSdkShellAction(localizeFile(
+      cloudPath = createPipelineParameters.cloudCallRoot / GcsLocalizationScriptName,
+      containerPath = gcsLocalizationContainerPath))(mounts = mounts, labels = localizationLabel)
 
-    val delocalizationContainerPath = createPipelineParameters.commandScriptContainerPath.sibling(DelocalizationScriptName)
-    val localizeDelocalizationScript = cloudSdkShellAction(localizeFile(
-      cloudPath = createPipelineParameters.cloudCallRoot / DelocalizationScriptName,
-      containerPath = delocalizationContainerPath))(mounts = mounts, labels = localizationLabel)
+    val gcsDelocalizationContainerPath = createPipelineParameters.commandScriptContainerPath.sibling(GcsDelocalizationScriptName)
+    val localizeGcsDelocalizationScript = cloudSdkShellAction(localizeFile(
+      cloudPath = createPipelineParameters.cloudCallRoot / GcsDelocalizationScriptName,
+      containerPath = gcsDelocalizationContainerPath))(mounts = mounts, labels = localizationLabel)
 
-    val runLocalizationScript = cloudSdkShellAction(
-      s"/bin/bash $localizationContainerPath")(mounts = mounts, labels = localizationLabel)
+    val runGcsLocalizationScript = cloudSdkShellAction(
+      s"/bin/bash $gcsLocalizationContainerPath")(mounts = mounts, labels = localizationLabel)
 
-    // Any "classic" PAPI v2 one-at-a-time localizations.
+    // Any "classic" PAPI v2 one-at-a-time localizations for non-GCS inputs.
     val singletonLocalizations = createPipelineParameters.inputOutputParameters.fileInputParameters.flatMap(_.toActions(mounts).toList)
 
-    val localizations = localizeLocalizationScript :: runLocalizationScript :: localizeDelocalizationScript :: singletonLocalizations
+    val localizations = localizeGcsLocalizationScript :: runGcsLocalizationScript :: localizeGcsDelocalizationScript :: singletonLocalizations
 
     ActionBuilder.annotateTimestampedActions("localization", Value.Localization)(localizations)
   }

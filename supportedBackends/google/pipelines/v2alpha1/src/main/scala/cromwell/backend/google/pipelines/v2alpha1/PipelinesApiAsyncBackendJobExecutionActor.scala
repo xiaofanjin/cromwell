@@ -115,31 +115,31 @@ class PipelinesApiAsyncBackendJobExecutionActor(standardParams: StandardAsyncExe
       """.stripMargin
   }
 
-  private def generateLocalizationScript(inputs: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
+  private def generateGcsLocalizationScript(inputs: List[PipelinesApiInput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
     val bundleFunction = (gcsLocalizationTransferBundle(localizationConfiguration) _).tupled
-    generateTransferScript(inputs, mounts, bundleFunction)
+    generateGcsTransferScript(inputs, mounts, bundleFunction)
   }
 
-  private def generateDelocalizationScript(outputs: List[PipelinesApiOutput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
+  private def generateGcsDelocalizationScript(outputs: List[PipelinesApiOutput], mounts: List[Mount])(implicit localizationConfiguration: LocalizationConfiguration): String = {
     val bundleFunction = (gcsDelocalizationTransferBundle(localizationConfiguration) _).tupled
-    generateTransferScript(outputs, mounts, bundleFunction)
+    generateGcsTransferScript(outputs, mounts, bundleFunction)
   }
 
-  private def generateTransferScript[T <: PipelinesParameter](items: List[T], mounts: List[Mount], bundleFunction: ((String, NonEmptyList[T])) => String): String = {
+  private def generateGcsTransferScript[T <: PipelinesParameter](items: List[T], mounts: List[Mount], bundleFunction: ((String, NonEmptyList[T])) => String): String = {
     val gcsItems = items collect { case i if i.cloudPath.isInstanceOf[GcsPath] => i }
     val localizationBundles = groupParametersByGcsBucket(gcsItems) map bundleFunction mkString "\n"
     transferScriptTemplate + localizationBundles
   }
 
-  override def uploadLocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
+  override def uploadGcsLocalizationScript(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
     val mounts = PipelinesConversions.toMounts(createPipelineParameters)
-    val content = generateLocalizationScript(createPipelineParameters.inputOutputParameters.fileInputParameters, mounts)(localizationConfiguration)
+    val content = generateGcsLocalizationScript(createPipelineParameters.inputOutputParameters.fileInputParameters, mounts)(localizationConfiguration)
     asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
   }
 
-  override def uploadDelocalizationFile(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
+  override def uploadGcsDelocalizationScript(createPipelineParameters: CreatePipelineParameters, cloudPath: Path, localizationConfiguration: LocalizationConfiguration): Future[Unit] = {
     val mounts = PipelinesConversions.toMounts(createPipelineParameters)
-    val content = generateDelocalizationScript(createPipelineParameters.inputOutputParameters.fileOutputParameters, mounts)(localizationConfiguration)
+    val content = generateGcsDelocalizationScript(createPipelineParameters.inputOutputParameters.fileOutputParameters, mounts)(localizationConfiguration)
     asyncIo.writeAsync(cloudPath, content, Seq(CloudStorageOptions.withMimeType("text/plain")))
   }
 

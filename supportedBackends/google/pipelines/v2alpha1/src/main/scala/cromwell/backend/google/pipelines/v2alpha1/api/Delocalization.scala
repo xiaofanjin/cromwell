@@ -6,7 +6,7 @@ import akka.http.scaladsl.model.ContentTypes
 import com.google.api.services.genomics.v2alpha1.model.{Action, Mount}
 import common.util.StringUtil._
 import cromwell.backend.google.pipelines.common.PipelinesApiConfigurationAttributes.LocalizationConfiguration
-import cromwell.backend.google.pipelines.common.PipelinesApiJobPaths.DelocalizationScriptName
+import cromwell.backend.google.pipelines.common.PipelinesApiJobPaths.GcsDelocalizationScriptName
 import cromwell.backend.google.pipelines.common.api.PipelinesApiRequestFactory.CreatePipelineParameters
 import cromwell.backend.google.pipelines.v2alpha1.PipelinesConversions._
 import cromwell.backend.google.pipelines.v2alpha1.RuntimeOutputMapping
@@ -131,14 +131,14 @@ trait Delocalization {
       )
     }
 
-    val delocalizationContainerPath = createPipelineParameters.commandScriptContainerPath.sibling(DelocalizationScriptName)
+    val gcsDelocalizationContainerPath = createPipelineParameters.commandScriptContainerPath.sibling(GcsDelocalizationScriptName)
 
     val delocalizationLabel = Map(Key.Tag -> Value.Delocalization)
-    val runDelocalizationScript: Action = cloudSdkShellAction(
-      s"/bin/bash $delocalizationContainerPath")(mounts = mounts, labels = delocalizationLabel)
+    val runGcsDelocalizationScript: Action = cloudSdkShellAction(
+      s"/bin/bash $gcsDelocalizationContainerPath")(mounts = mounts, labels = delocalizationLabel)
 
     ActionBuilder.annotateTimestampedActions("delocalization", Value.Delocalization)(
-      runDelocalizationScript ::
+      runGcsDelocalizationScript ::
         createPipelineParameters.outputParameters.flatMap(_.toActions(mounts).toList) ++
         runtimeExtractionActions
     ) :+
