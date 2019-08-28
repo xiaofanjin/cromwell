@@ -2,4 +2,4 @@ steps:
   - name: 'gcr.io/cloud-builders/git'
     args: ['clone', 'https://github.com/broadinstitute/cromwell']
   - name: 'ubuntu'
-    args: ['bash', './cromwell/src/ci/bin/testSingleWorkflowRunner.sh']
+    args: ['bash', './src/ci/bin/testSingleWorkflowRunner.sh']
