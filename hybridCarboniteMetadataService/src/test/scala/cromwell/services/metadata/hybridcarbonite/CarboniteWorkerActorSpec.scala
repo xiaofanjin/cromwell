@@ -68,8 +68,6 @@ class CarboniteWorkerActorSpec extends TestKitSuite("CarboniteWorkerActorSpec") 
   }
 }
 
-
-
 class MockCarboniteWorkerActor(carboniterConfig: HybridCarboniteConfig,
                                serviceRegistryActor: ActorRef,
                                ioActor: ActorRef,
