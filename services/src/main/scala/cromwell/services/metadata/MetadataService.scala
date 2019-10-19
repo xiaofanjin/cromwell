@@ -39,9 +39,9 @@ object MetadataService {
   trait MetadataServiceAction extends MetadataServiceMessage with ServiceRegistryMessage {
     def serviceName = MetadataServiceName
   }
-  trait MetadataReadAction extends MetadataServiceAction
+  sealed trait MetadataReadAction extends MetadataServiceAction
 
-  trait WorkflowMetadataReadAction extends MetadataReadAction {
+  sealed trait WorkflowMetadataReadAction extends MetadataReadAction {
     def workflowId: WorkflowId
   }
 
