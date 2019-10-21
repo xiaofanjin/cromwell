@@ -62,7 +62,7 @@ final class CarbonitedMetadataThawingActor(carboniterConfig: HybridCarboniteConf
 
   whenUnhandled {
     case other =>
-      log.error(s"Programmer Error: Unexpected message to ${self.path.name}: $other")
+      log.error(s"Programmer Error: Unexpected message to ${getClass.getSimpleName} ${self.path.name}: $other")
       stay()
   }
 
