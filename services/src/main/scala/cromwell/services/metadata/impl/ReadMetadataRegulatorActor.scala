@@ -5,10 +5,9 @@ import java.util.UUID
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import cromwell.core.Dispatcher.ApiDispatcher
 import cromwell.services.metadata.MetadataService
-import cromwell.services.metadata.MetadataService.{MetadataQueryResponse, MetadataReadAction, MetadataServiceAction, MetadataServiceResponse, WorkflowMetadataReadAction}
+import cromwell.services.metadata.MetadataService.{MetadataQueryResponse, MetadataServiceAction, MetadataServiceResponse, WorkflowMetadataReadAction}
 import cromwell.services.metadata.impl.ReadMetadataRegulatorActor.ReadMetadataWorkerMaker
 import cromwell.services.metadata.impl.builder.MetadataBuilderActor
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor.MetadataBuilderActorResponse
 
 import scala.collection.mutable
 
@@ -25,32 +24,23 @@ class ReadMetadataRegulatorActor(metadataBuilderActorProps: ReadMetadataWorkerMa
   val builderRequests = new mutable.HashMap[ActorRef, MetadataServiceAction]()
 
   override def receive: Receive = {
-    // This indirection via 'MetadataReadAction' lets the compiler make sure we cover all cases in the sealed trait:
-    case action: MetadataReadAction =>
-      action match {
-        case singleWorkflowAction: WorkflowMetadataReadAction =>
-          val currentRequesters = apiRequests.getOrElse(singleWorkflowAction, Set.empty)
-          apiRequests.put(singleWorkflowAction, currentRequesters + sender())
-          if (currentRequesters.isEmpty) {
-
-            val builderActor = context.actorOf(metadataBuilderActorProps().withDispatcher(ApiDispatcher), MetadataBuilderActor.uniqueActorName(singleWorkflowAction.workflowId.toString))
-            builderRequests.put(builderActor, singleWorkflowAction)
-            builderActor ! singleWorkflowAction
-          }
-        case crossWorkflowAction: MetadataService.QueryForWorkflowsMatchingParameters =>
-          val currentRequesters = apiRequests.getOrElse(crossWorkflowAction, Set.empty)
-          apiRequests.put(crossWorkflowAction, currentRequesters + sender())
-          if (currentRequesters.isEmpty) {
-            val readMetadataActor = context.actorOf(readMetadataWorkerProps.apply().withDispatcher(ApiDispatcher), s"MetadataQueryWorker-${UUID.randomUUID()}")
-            builderRequests.put(readMetadataActor, crossWorkflowAction)
-            readMetadataActor ! crossWorkflowAction
-          }
+    case singleWorkflowAction: WorkflowMetadataReadAction =>
+      val currentRequesters = apiRequests.getOrElse(singleWorkflowAction, Set.empty)
+      apiRequests.put(singleWorkflowAction, currentRequesters + sender())
+      if (currentRequesters.isEmpty) {
+        val builderActor = context.actorOf(metadataBuilderActorProps().withDispatcher(ApiDispatcher), MetadataBuilderActor.uniqueActorName(singleWorkflowAction.workflowId.toString))
+        builderRequests.put(builderActor, singleWorkflowAction)
+        builderActor ! singleWorkflowAction
       }
-    case serviceResponse: MetadataServiceResponse =>
-      serviceResponse match {
-        case response: MetadataBuilderActorResponse => handleResponseFromMetadataWorker(response)
-        case response: MetadataQueryResponse => handleResponseFromMetadataWorker(response)
+    case crossWorkflowAction: MetadataService.QueryForWorkflowsMatchingParameters =>
+      val currentRequesters = apiRequests.getOrElse(crossWorkflowAction, Set.empty)
+      apiRequests.put(crossWorkflowAction, currentRequesters + sender())
+      if (currentRequesters.isEmpty) {
+        val readMetadataActor = context.actorOf(readMetadataWorkerProps.apply().withDispatcher(ApiDispatcher), s"MetadataQueryWorker-${UUID.randomUUID()}")
+        builderRequests.put(readMetadataActor, crossWorkflowAction)
+        readMetadataActor ! crossWorkflowAction
       }
+    case response @ (_: MetadataServiceResponse | _: MetadataQueryResponse) => handleResponseFromMetadataWorker(response)
     case other => log.error(s"Programmer Error: Unexpected message $other received from $sender")
   }
 

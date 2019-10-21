@@ -15,20 +15,18 @@ class HybridReadDeciderActor(classicMetadataServiceActor: ActorRef, carboniteMet
   implicit val ec: ExecutionContext = context.dispatcher
 
   when(Pending) {
-    case Event(e @ (_: GetLabels | _: GetRootAndSubworkflowLabels | _: GetStatus | _: QueryForWorkflowsMatchingParameters), NoData) =>
-      // All of these messages should go to the classic metadata service exclusively since no carbonited data would
-      // ever be required for their responses.
-      classicMetadataServiceActor forward e
-      stop(FSM.Normal)
-    case Event(other: WorkflowMetadataReadAction, NoData) => // GetLogs, WorkflowOutputs, GetMetadataAction
-      classicMetadataServiceActor ! QueryForWorkflowsMatchingParameters(Vector(WorkflowQueryKey.Id.name -> other.workflowId.toString))
-      goto(RequestingMetadataArchiveStatus) using WorkingData(sender(), other)
+    case Event(action: MetadataReadAction, NoData) if action.requiresOnlyClassicMetadata =>
+      classicMetadataServiceActor ! action
+      goto(WaitingForMetadataResponse) using WorkingData(sender(), action)
+    case Event(action: WorkflowMetadataReadAction, NoData) =>
+      classicMetadataServiceActor ! QueryForWorkflowsMatchingParameters(Vector(WorkflowQueryKey.Id.name -> action.workflowId.toString))
+      goto(RequestingMetadataArchiveStatus) using WorkingData(sender(), action)
   }
 
   when(RequestingMetadataArchiveStatus) {
     case Event(s: WorkflowQuerySuccess, wd: WorkingData) if s.hasMultipleSummaryRows =>
-      val errorMsg = s"Programmer Error: Got more than one summary row back looking up metadata archive status for ${wd.request}: ${s.response}"
-      wd.actor ! makeAppropriateFailureForRequest(errorMsg, wd.request)
+      val errorMsg = s"Programmer Error: Found multiple summary rows looking up metadata archive status for ${wd.request}: ${s.response}"
+      wd.requester ! makeAppropriateFailureForRequest(errorMsg, wd.request)
       stop(FSM.Failure(errorMsg))
     case Event(s: WorkflowQuerySuccess, wd: WorkingData) if s.isCarbonited =>
       carboniteMetadataServiceActor ! wd.request
@@ -44,7 +42,7 @@ class HybridReadDeciderActor(classicMetadataServiceActor: ActorRef, carboniteMet
 
   when(WaitingForMetadataResponse) {
     case Event(response: MetadataServiceResponse, wd: WorkingData) =>
-      wd.actor ! response
+      wd.requester ! response
       stop(FSM.Normal)
   }
 
@@ -79,10 +77,17 @@ object HybridReadDeciderActor {
 
   sealed trait HybridReadDeciderData
   case object NoData extends HybridReadDeciderData
-  final case class WorkingData(actor: ActorRef, request: MetadataReadAction) extends HybridReadDeciderData
+  final case class WorkingData(requester: ActorRef, request: MetadataReadAction) extends HybridReadDeciderData
 
   implicit class EnhancedWorkflowQuerySuccess(val success: WorkflowQuerySuccess) extends AnyVal {
     def hasMultipleSummaryRows: Boolean = success.response.results.size > 1
     def isCarbonited: Boolean = success.response.results.headOption.exists(_.metadataArchiveStatus == MetadataArchiveStatus.Archived)
+  }
+
+  implicit class EnhancedMetadataReadAction(val action: MetadataReadAction) extends AnyVal {
+    def requiresOnlyClassicMetadata: Boolean = action match {
+      case _: GetLabels | _: GetRootAndSubworkflowLabels | _: GetStatus | _: QueryForWorkflowsMatchingParameters => true
+      case _ => false // GetLogs, WorkflowOutputs, GetMetadataAction
+    }
   }
 }
