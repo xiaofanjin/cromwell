@@ -26,14 +26,14 @@ class HybridReadDeciderActor(classicMetadataServiceActor: ActorRef, carboniteMet
   }
 
   when(RequestingMetadataArchiveStatus) {
-    case Event(s: WorkflowQuerySuccess, wd: WorkingData) if s.hasMultipleStatusRows =>
-      val errorMsg = s"Programmer Error: Got more than one status row back looking up metadata archive status for ${wd.request}: ${s.response}"
+    case Event(s: WorkflowQuerySuccess, wd: WorkingData) if s.hasMultipleSummaryRows =>
+      val errorMsg = s"Programmer Error: Got more than one summary row back looking up metadata archive status for ${wd.request}: ${s.response}"
       wd.actor ! makeAppropriateFailureForRequest(errorMsg, wd.request)
       stop(FSM.Failure(errorMsg))
     case Event(s: WorkflowQuerySuccess, wd: WorkingData) if s.isCarbonited =>
       carboniteMetadataServiceActor ! wd.request
       goto(WaitingForMetadataResponse)
-    case Event(_: WorkflowQuerySuccess, wd: WorkingData) =>
+    case Event(_: WorkflowQuerySuccess, wd: WorkingData) => // this is an uncarbonited workflow
       classicMetadataServiceActor ! wd.request
       goto(WaitingForMetadataResponse)
     case Event(WorkflowQueryFailure(reason), wd: WorkingData) =>
@@ -82,7 +82,7 @@ object HybridReadDeciderActor {
   final case class WorkingData(actor: ActorRef, request: MetadataReadAction) extends HybridReadDeciderData
 
   implicit class EnhancedWorkflowQuerySuccess(val success: WorkflowQuerySuccess) extends AnyVal {
-    def hasMultipleStatusRows: Boolean = success.response.results.size > 1
+    def hasMultipleSummaryRows: Boolean = success.response.results.size > 1
     def isCarbonited: Boolean = success.response.results.headOption.exists(_.metadataArchiveStatus == MetadataArchiveStatus.Archived)
   }
 }
