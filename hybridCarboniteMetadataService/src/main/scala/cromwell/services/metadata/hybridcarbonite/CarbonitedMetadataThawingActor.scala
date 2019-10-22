@@ -90,7 +90,6 @@ object CarbonitedMetadataThawingActor {
 
   sealed trait ThawCarboniteMessage
 
-  final case class ThawCarbonitedMetadata(workflowId: RootWorkflowId) extends ThawCarboniteMessage
   final case class ThawCarboniteSucceeded(value: String) extends ThawCarboniteMessage
   final case class ThawCarboniteFailed(reason: Throwable) extends ThawCarboniteMessage
 
@@ -126,11 +125,9 @@ object CarbonitedMetadataThawingActor {
             JsonEditor.includeExcludeJson(callJson, includeKeys, excludeKeys)
           case wrong => throw new RuntimeException(s"Programmer Error: Invalid MetadataQuery: $wrong")
         }
-
-        // For carbonited metadata, "expanded" subworkflows translates to not deleting them. So `identity` for expanded subworkflows
-        // and `JsonEditor.removeSubworkflowMetadata` for unexpanded subworkflows.
+        // For carbonited metadata, "expanded" subworkflows translates to not deleting subworkflows out of the root workflow that already
+        // contains them. So `identity` for expanded subworkflows and `JsonEditor.removeSubworkflowMetadata` for unexpanded subworkflows.
         val processSubworkflowMetadata: Json => Json = if (get.key.expandSubWorkflows) identity else JsonEditor.removeSubworkflowMetadata
-
         processSubworkflowMetadata(intermediate)
       case other =>
         throw new RuntimeException(s"Programmer Error: Unexpected WorkflowMetadataReadAction message of type '${other.getClass.getSimpleName}': $other")
