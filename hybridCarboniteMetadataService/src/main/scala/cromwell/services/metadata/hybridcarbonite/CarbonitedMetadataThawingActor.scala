@@ -5,6 +5,7 @@ import akka.pattern.pipe
 import cats.data.NonEmptyList
 import cromwell.core.io.{AsyncIo, DefaultIoCommandBuilder}
 import cromwell.core.{RootWorkflowId, WorkflowId}
+import cromwell.services.metadata.{MetadataQuery, MetadataQueryJobKey}
 import cromwell.services.metadata.MetadataService._
 import cromwell.services.metadata.hybridcarbonite.CarbonitedMetadataThawingActor._
 import cromwell.util.JsonEditor
@@ -108,13 +109,31 @@ object CarbonitedMetadataThawingActor {
 
   implicit class EnhancedJson(val json: Json) extends AnyVal {
     def editFor(action: WorkflowMetadataReadAction): Json = action match {
-      case _: GetLogs =>
-        JsonEditor.includeJson(json, NonEmptyList.of("stdout", "stderr", "backendLogs"))
-      case _: WorkflowOutputs =>
-        JsonEditor.includeJson(json, NonEmptyList.of("outputs"))
-      case _: GetMetadataAction => ???
+      case _: GetLogs =>         JsonEditor.logs(json)
+      case _: WorkflowOutputs => JsonEditor.outputs(json)
+      case get: GetMetadataAction =>
+        val intermediate = get.key match {
+          case MetadataQuery(_, None, None, None, None, _) => json
+          case MetadataQuery(_, None, Some(key), None, None, _) => JsonEditor.includeJson(json, NonEmptyList.of(key))
+          case MetadataQuery(_, Some(jobKey), None, None, None, _) => JsonEditor.extractCall(json, jobKey.callFqn, jobKey.index, jobKey.attempt)
+          case MetadataQuery(_, Some(MetadataQueryJobKey(callFqn, index, attempt)), Some(key), None, None, _) =>
+            val callJson = JsonEditor.extractCall(json, callFqn, index, attempt)
+            JsonEditor.includeJson(callJson, NonEmptyList.of(key))
+          case MetadataQuery(_, None, None, includeKeys, excludeKeys, _) =>
+            JsonEditor.includeExcludeJson(json, includeKeys, excludeKeys)
+          case MetadataQuery(_, Some(MetadataQueryJobKey(callFqn, index, attempt)), None, includeKeys, excludeKeys, _) =>
+            val callJson = JsonEditor.extractCall(json, callFqn, index, attempt)
+            JsonEditor.includeExcludeJson(callJson, includeKeys, excludeKeys)
+          case wrong => throw new RuntimeException(s"Programmer Error: Invalid MetadataQuery: $wrong")
+        }
+
+        // For carbonited metadata, "expanded" subworkflows translates to not deleting them. So `identity` for expanded subworkflows
+        // and `JsonEditor.removeSubworkflowMetadata` for unexpanded subworkflows.
+        val processSubworkflowMetadata: Json => Json = if (get.key.expandSubWorkflows) identity else JsonEditor.removeSubworkflowMetadata
+
+        processSubworkflowMetadata(intermediate)
       case other =>
-        throw new RuntimeException(s"""Programmer Error: Unexpected WorkflowMetadataReadAction message of type '${other.getClass.getSimpleName}': $other""")
+        throw new RuntimeException(s"Programmer Error: Unexpected WorkflowMetadataReadAction message of type '${other.getClass.getSimpleName}': $other")
     }
   }
 

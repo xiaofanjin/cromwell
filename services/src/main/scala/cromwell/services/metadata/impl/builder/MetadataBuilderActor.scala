@@ -207,7 +207,7 @@ object MetadataBuilderActor {
     if (eventsList.isEmpty) JsObject(Map.empty[String, JsValue])
     else {
       query match {
-        case MetadataQuery(w, _, _, _, _, _) => workflowMetadataResponse(w, eventsList, includeCallsIfEmpty = true, expandedValues)
+        case q: MetadataQuery => workflowMetadataResponse(q.workflowId, eventsList, includeCallsIfEmpty = true, expandedValues)
         case _ => MetadataBuilderActor.parse(eventsList, expandedValues)
       }
     }
