@@ -3,7 +3,7 @@ package cromwell.services.metadata.hybridcarbonite
 import akka.actor.{ActorRef, FSM, LoggingFSM, Props}
 import cromwell.services.metadata.MetadataService._
 import cromwell.services.metadata.hybridcarbonite.HybridReadDeciderActor._
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor.FailedMetadataResponse
+import cromwell.services.metadata.impl.builder.MetadataBuilderActor.{FailedMetadataResponse, MetadataBuilderActorResponse}
 import cromwell.services.metadata.{MetadataArchiveStatus, WorkflowQueryKey}
 
 import scala.concurrent.ExecutionContext
@@ -41,7 +41,7 @@ class HybridReadDeciderActor(classicMetadataServiceActor: ActorRef, carboniteMet
   }
 
   when(WaitingForMetadataResponse) {
-    case Event(response: MetadataServiceResponse, wd: WorkingData) =>
+    case Event(response: MetadataBuilderActorResponse, wd: WorkingData) =>
       wd.requester ! response
       stop(FSM.Normal)
   }
