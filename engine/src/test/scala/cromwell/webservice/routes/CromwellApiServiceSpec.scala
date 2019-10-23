@@ -15,13 +15,13 @@ import cromwell.engine.workflow.WorkflowManagerActor.WorkflowNotFoundException
 import cromwell.engine.workflow.workflowstore.WorkflowStoreActor._
 import cromwell.engine.workflow.workflowstore.WorkflowStoreEngineActor.{WorkflowOnHoldToSubmittedFailure, WorkflowOnHoldToSubmittedSuccess}
 import cromwell.engine.workflow.workflowstore.WorkflowStoreSubmitActor.{WorkflowSubmittedToStore, WorkflowsBatchSubmittedToStore}
+import cromwell.services.BuiltMetadataResponse
 import cromwell.services.healthmonitor.ProtoHealthMonitorServiceActor.{GetCurrentStatus, StatusCheckResponse, SubsystemStatus}
 import cromwell.services.instrumentation.InstrumentationService.InstrumentationServiceMessage
 import cromwell.services.metadata.MetadataArchiveStatus.Unarchived
 import cromwell.services.metadata.MetadataService._
 import cromwell.services.metadata._
 import cromwell.services.metadata.impl.builder.MetadataBuilderActor
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor.BuiltMetadataResponse
 import cromwell.services.womtool.WomtoolServiceMessages.{DescribeFailure, DescribeRequest, DescribeSuccess}
 import cromwell.services.womtool.models.WorkflowDescription
 import cromwell.util.SampleWdl.HelloWorld

@@ -3,9 +3,9 @@ package cromwell.webservice
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import cromwell.core._
 import cromwell.core.labels.{Label, Labels}
+import cromwell.services.BuiltMetadataResponse
 import cromwell.services.metadata.MetadataEvent
 import cromwell.services.metadata.MetadataService._
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor.BuiltMetadataResponse
 import cromwell.webservice.LabelsManagerActor._
 import spray.json.{DefaultJsonProtocol, JsObject, JsString}
 

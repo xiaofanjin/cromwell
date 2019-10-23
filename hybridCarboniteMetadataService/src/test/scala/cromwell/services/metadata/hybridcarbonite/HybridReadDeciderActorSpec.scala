@@ -3,11 +3,11 @@ package cromwell.services.metadata.hybridcarbonite
 import akka.actor.ActorSystem
 import akka.testkit.{TestFSMRef, TestProbe}
 import cromwell.core.{TestKitSuite, WorkflowId}
+import cromwell.services.BuiltMetadataResponse
 import cromwell.services.metadata.MetadataArchiveStatus
 import cromwell.services.metadata.MetadataArchiveStatus._
 import cromwell.services.metadata.MetadataService._
 import cromwell.services.metadata.hybridcarbonite.HybridReadDeciderActor._
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor.BuiltMetadataResponse
 import org.scalatest.{FlatSpecLike, Matchers}
 import spray.json._
 
@@ -68,7 +68,7 @@ class HybridReadDeciderActorSpec extends TestKitSuite("HybridReadDeciderActorSpe
     carboniteMetadataActor.msgAvailable should be(false)
   }
 
-  it should "go straight to the classic metadata service for archive status for multi-workflow queries" in {
+  it should "go straight to the classic metadata service for multi-workflow queries" in {
 
     val client = TestProbe("client")
     val classicMetadataActor = TestProbe("classic")

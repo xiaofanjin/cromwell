@@ -5,10 +5,10 @@ import cats.data.NonEmptyList
 import cromwell.core._
 import cromwell.engine.workflow.lifecycle.execution.callcaching.CallCacheDiffActor._
 import cromwell.engine.workflow.lifecycle.execution.callcaching.CallCacheDiffQueryParameter.CallCacheDiffQueryCall
+import cromwell.services.{BuiltMetadataResponse, FailedMetadataResponse}
 import cromwell.services.metadata.MetadataService.GetMetadataAction
 import cromwell.services.metadata.{MetadataService, _}
 import cromwell.services.metadata.impl.builder.MetadataBuilderActor
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor.{BuiltMetadataResponse, FailedMetadataResponse}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.{FlatSpecLike, Matchers}
 import spray.json.JsObject

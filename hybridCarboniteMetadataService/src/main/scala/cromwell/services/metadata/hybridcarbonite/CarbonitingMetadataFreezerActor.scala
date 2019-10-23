@@ -6,13 +6,12 @@ import akka.actor.{ActorRef, LoggingFSM, Props}
 import cats.data.NonEmptyList
 import cromwell.core.WorkflowId
 import cromwell.core.io.{AsyncIo, DefaultIoCommandBuilder}
-import cromwell.services.MetadataServicesStore
+import cromwell.services.{BuiltMetadataResponse, FailedMetadataResponse, MetadataServicesStore}
 import cromwell.services.metadata.MetadataArchiveStatus.{ArchiveFailed, Archived}
 import cromwell.services.metadata.MetadataService.GetMetadataAction
 import cromwell.services.metadata.hybridcarbonite.CarboniteWorkerActor.CarboniteWorkflowComplete
 import cromwell.services.metadata.hybridcarbonite.CarbonitingMetadataFreezerActor._
 import cromwell.services.metadata.impl.MetadataDatabaseAccess
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor.{BuiltMetadataResponse, FailedMetadataResponse}
 import cromwell.services.metadata.{MetadataArchiveStatus, MetadataQuery}
 import cromwell.util.GracefulShutdownHelper.ShutdownCommand
 

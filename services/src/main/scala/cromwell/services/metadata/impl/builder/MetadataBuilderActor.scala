@@ -8,6 +8,7 @@ import common.collections.EnhancedCollections._
 import cromwell.services.metadata.impl.builder.MetadataComponent._
 import cromwell.core.ExecutionIndex.ExecutionIndex
 import cromwell.core._
+import cromwell.services.{BuildMetadataResponse, BuiltMetadataResponse, FailedMetadataResponse}
 import cromwell.services.metadata.MetadataService._
 import cromwell.services.metadata._
 import cromwell.services.metadata.impl.builder.MetadataBuilderActor._
@@ -19,10 +20,6 @@ import scala.language.postfixOps
 
 
 object MetadataBuilderActor {
-  sealed trait MetadataBuilderActorResponse extends MetadataServiceResponse { def originalRequest: MetadataReadAction }
-  final case class BuiltMetadataResponse(originalRequest: MetadataReadAction, responseJson: JsObject) extends MetadataBuilderActorResponse
-  final case class FailedMetadataResponse(originalRequest: MetadataReadAction, reason: Throwable) extends MetadataBuilderActorResponse
-
   sealed trait MetadataBuilderActorState
   case object Idle extends MetadataBuilderActorState
   case object WaitingForMetadataService extends MetadataBuilderActorState
@@ -287,8 +284,8 @@ class MetadataBuilderActor(readMetadataWorkerMaker: () => Props)
   }
 
   when(WaitingForSubWorkflows) {
-    case Event(mbr: MetadataBuilderActorResponse, data: HasReceivedEventsData) =>
-      processSubWorkflowMetadata(mbr, data)
+    case Event(bmr: BuildMetadataResponse, data: HasReceivedEventsData) =>
+      processSubWorkflowMetadata(bmr, data)
     case Event(failure: MetadataServiceFailure, data: HasReceivedEventsData) =>
       data.target ! FailedMetadataResponse(data.originalRequest, failure.reason)
       allDone()
@@ -308,7 +305,7 @@ class MetadataBuilderActor(readMetadataWorkerMaker: () => Props)
       stay
   }
 
-  def processSubWorkflowMetadata(metadataResponse: MetadataBuilderActorResponse, data: HasReceivedEventsData) = {
+  def processSubWorkflowMetadata(metadataResponse: BuildMetadataResponse, data: HasReceivedEventsData) = {
     metadataResponse match {
       case BuiltMetadataResponse(GetMetadataAction(queryKey), js) =>
         val subId: WorkflowId = queryKey.workflowId

@@ -3,11 +3,11 @@ package cromwell.services.metadata.hybridcarbonite
 import akka.actor.{ActorRef, LoggingFSM, Props, Status}
 import akka.pattern.pipe
 import cats.data.NonEmptyList
+import cromwell.core.WorkflowId
 import cromwell.core.io.{AsyncIo, DefaultIoCommandBuilder}
-import cromwell.core.{RootWorkflowId, WorkflowId}
-import cromwell.services.metadata.{MetadataQuery, MetadataQueryJobKey}
 import cromwell.services.metadata.MetadataService._
 import cromwell.services.metadata.hybridcarbonite.CarbonitedMetadataThawingActor._
+import cromwell.services.metadata.{MetadataQuery, MetadataQueryJobKey}
 import cromwell.util.JsonEditor
 import io.circe.parser._
 import io.circe.{Json, Printer}

@@ -7,11 +7,11 @@ import common.validation.Validation._
 import cromwell.core.io.IoPromiseProxyActor.IoCommandWithPromise
 import cromwell.core.io.IoWriteCommand
 import cromwell.core.{TestKitSuite, WorkflowId}
+import cromwell.services.BuiltMetadataResponse
 import cromwell.services.metadata.MetadataArchiveStatus
 import cromwell.services.metadata.MetadataService.GetMetadataAction
 import cromwell.services.metadata.hybridcarbonite.CarbonitingMetadataFreezerActor.{Fetching, FreezeMetadata, Freezing, Pending, UpdatingDatabase}
 import cromwell.services.metadata.hybridcarbonite.CarbonitingMetadataFreezerActorSpec.TestableCarbonitingMetadataFreezerActor
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor.BuiltMetadataResponse
 import org.scalatest.{FlatSpecLike, Matchers}
 import spray.json._
 import org.scalatest.concurrent.Eventually._
