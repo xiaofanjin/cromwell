@@ -84,10 +84,9 @@ class HybridReadDeciderActorSpec extends TestKitSuite("HybridReadDeciderActorSpe
     classicMetadataActor.expectMsg(queryMsg)
     hrda.stateName should be(WaitingForMetadataResponse)
 
-    val response = WorkflowQuerySuccess(WorkflowQueryResponse(Seq(
-      WorkflowQueryResult("id1", null, null, null, null, null, null, null, null, null),
-      WorkflowQueryResult("id2", null, null, null, null, null, null, null, null, null)
-    ), 2), None)
+    val fakeResponse = "{}".parseJson.asJsObject
+
+    val response = BuiltMetadataResponse(queryMsg, fakeResponse)
     classicMetadataActor.send(hrda, response)
     client.expectMsg(response)
 
