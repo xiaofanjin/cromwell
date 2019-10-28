@@ -18,3 +18,4 @@ Need to file an issue? Head over to [our JIRA](https://broadworkbench.atlassian.
 As of May 2019, we are in the process of migrating all issues from Github to JIRA. At a later date to be announced, submitting new Github issues will be disabled.
 
 ![Jamie, the Cromwell pig](docs/jamie_the_cromwell_pig.png)
+
